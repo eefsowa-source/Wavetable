@@ -1,0 +1,549 @@
+#include "PluginProcessor.h"
+#include "PluginEditor.h"
+#include <array>
+#include <cmath>
+#include <cstdint>
+
+namespace
+{
+    constexpr std::array<const char*, 16> midiLearnIDs {
+        "osc1Pos", "osc2Pos", "osc3Pos", "cutoff", "resonance",
+        "filterDrive", "saturation", "output", "ampAttack", "ampDecay",
+        "ampSustain", "ampRelease", "filterAttack", "filterDecay",
+        "filterSustain", "filterRelease" };
+    constexpr int wavetableStateVersion = 1;
+    constexpr int factoryPresetCount = 10;
+
+    struct FactoryPreset
+    {
+        float osc1Pos = 0.0f, osc2Pos = 0.0f, osc3Pos = 0.0f;
+        int filterType = 0, filterSlope = 0;
+        float cutoff = 12000.0f, resonance = 0.25f, filterDrive = 0.0f;
+        float saturation = 0.15f, output = -6.0f;
+        float ampAttack = 0.01f, ampDecay = 0.25f, ampSustain = 0.8f, ampRelease = 0.35f;
+        float filterAttack = 0.01f, filterDecay = 0.25f, filterSustain = 0.8f, filterRelease = 0.35f;
+    };
+
+    const std::array<FactoryPreset, factoryPresetCount>& getFactoryPresets()
+    {
+        static const auto presets = []
+        {
+            std::array<FactoryPreset, factoryPresetCount> values;
+            std::uint32_t state = 0xE0A2026u;
+            const auto next01 = [&state]
+            {
+                state ^= state << 13;
+                state ^= state >> 17;
+                state ^= state << 5;
+                return (float) (state & 0x00ffffffu) / 16777215.0f;
+            };
+            const auto range = [&next01] (float lo, float hi) { return lo + (hi - lo) * next01(); };
+            const auto time = [&next01] (float lo, float hi) { return std::exp (juce::jmap (next01(), std::log (lo), std::log (hi))); };
+
+            for (auto& preset : values)
+            {
+                preset.osc1Pos = next01();
+                preset.osc2Pos = next01();
+                preset.osc3Pos = next01();
+                preset.filterType = juce::jlimit (0, 2, (int) (next01() * 3.0f));
+                preset.filterSlope = juce::jlimit (0, 3, (int) (next01() * 4.0f));
+                preset.cutoff = std::exp (juce::jmap (next01(), std::log (120.0f), std::log (16000.0f)));
+                preset.resonance = range (0.15f, 0.9f);
+                preset.filterDrive = range (-6.0f, 18.0f);
+                preset.saturation = range (0.02f, 0.85f);
+                preset.output = range (-12.0f, -1.0f);
+                preset.ampAttack = time (0.005f, 0.8f);
+                preset.ampDecay = time (0.05f, 2.5f);
+                preset.ampSustain = range (0.25f, 1.0f);
+                preset.ampRelease = time (0.05f, 3.0f);
+                preset.filterAttack = time (0.005f, 0.6f);
+                preset.filterDecay = time (0.05f, 2.0f);
+                preset.filterSustain = range (0.15f, 1.0f);
+                preset.filterRelease = time (0.05f, 2.5f);
+            }
+            return values;
+        }();
+        return presets;
+    }
+}
+
+static juce::AudioProcessorValueTreeState::ParameterLayout makeLayout()
+{
+    using P = juce::AudioParameterFloat; using C = juce::AudioParameterChoice; using B = juce::AudioParameterBool;
+    juce::AudioProcessorValueTreeState::ParameterLayout l;
+    l.add (std::make_unique<P> ("osc1Pos", "Osc 1 Wavetable", 0.0f, 1.0f, 0.0f));
+    l.add (std::make_unique<P> ("osc2Pos", "Osc 2 Wavetable", 0.0f, 1.0f, 0.35f));
+    l.add (std::make_unique<P> ("osc3Pos", "Osc 3 Wavetable", 0.0f, 1.0f, 0.67f));
+    for (int osc = 1; osc <= 3; ++osc)
+    {
+        const auto prefix = "osc" + juce::String (osc);
+        l.add (std::make_unique<P> (prefix + "Level", prefix + " Level", 0.0f, 1.0f, 0.75f));
+        l.add (std::make_unique<P> (prefix + "Tune", prefix + " Tune", -24.0f, 24.0f, osc == 1 ? 0.0f : (osc == 2 ? 7.0f : -7.0f)));
+        l.add (std::make_unique<P> (prefix + "Unison", prefix + " Unison", 1.0f, 8.0f, 1.0f));
+        l.add (std::make_unique<P> (prefix + "Spread", prefix + " Spread", 0.0f, 1.0f, 0.2f));
+    }
+    l.add (std::make_unique<C> ("filterType", "Filter Type", juce::StringArray { "Low-pass", "High-pass", "Band-pass" }, 0));
+    l.add (std::make_unique<C> ("filterSlope", "Filter Slope", juce::StringArray { "12 dB/oct", "12 dB/oct", "24 dB/oct", "24 dB/oct" }, 3));
+    l.add (std::make_unique<P> ("cutoff", "Cutoff", 20.0f, 20000.0f, 12000.0f));
+    l.add (std::make_unique<P> ("resonance", "Resonance", 0.1f, 1.0f, 0.25f));
+    l.add (std::make_unique<P> ("filterDrive", "Filter Drive", -12.0f, 24.0f, 0.0f));
+    l.add (std::make_unique<P> ("saturation", "Saturation", 0.0f, 1.0f, 0.15f));
+    l.add (std::make_unique<P> ("output", "Output", -60.0f, 6.0f, -6.0f));
+    l.add (std::make_unique<P> ("filterEnvAmount", "Filter Envelope Amount", -1.0f, 1.0f, 0.5f));
+    l.add (std::make_unique<P> ("masterWidth", "Master Width", 0.0f, 2.0f, 1.0f));
+    l.add (std::make_unique<P> ("ampAttack", "Amp Attack", 0.001f, 10.0f, 0.01f));
+    l.add (std::make_unique<P> ("ampDecay", "Amp Decay", 0.001f, 10.0f, 0.25f));
+    l.add (std::make_unique<P> ("ampSustain", "Amp Sustain", 0.0f, 1.0f, 0.8f));
+    l.add (std::make_unique<P> ("ampRelease", "Amp Release", 0.001f, 10.0f, 0.35f));
+    l.add (std::make_unique<P> ("filterAttack", "Filter Attack", 0.001f, 10.0f, 0.01f));
+    l.add (std::make_unique<P> ("filterDecay", "Filter Decay", 0.001f, 10.0f, 0.25f));
+    l.add (std::make_unique<P> ("filterSustain", "Filter Sustain", 0.0f, 1.0f, 0.8f));
+    l.add (std::make_unique<P> ("filterRelease", "Filter Release", 0.001f, 10.0f, 0.35f));
+    l.add (std::make_unique<P> ("lfo1Rate", "LFO 1 Rate", 0.05f, 20.0f, 1.0f));
+    l.add (std::make_unique<P> ("lfo1Depth", "LFO 1 Depth", 0.0f, 1.0f, 0.0f));
+    l.add (std::make_unique<C> ("lfo1Destination", "LFO 1 Destination", juce::StringArray { "Pitch", "Cutoff", "Wavetable" }, 1));
+    l.add (std::make_unique<P> ("lfo2Rate", "LFO 2 Rate", 0.05f, 20.0f, 0.25f));
+    l.add (std::make_unique<P> ("lfo2Depth", "LFO 2 Depth", 0.0f, 1.0f, 0.0f));
+    l.add (std::make_unique<C> ("lfo2Destination", "LFO 2 Destination", juce::StringArray { "Pitch", "Cutoff", "Wavetable" }, 2));
+    l.add (std::make_unique<P> ("delayTime", "Delay Time", 0.03f, 1.5f, 0.32f));
+    l.add (std::make_unique<P> ("delayFeedback", "Delay Feedback", 0.0f, 0.9f, 0.35f));
+    l.add (std::make_unique<P> ("delayMix", "Delay Mix", 0.0f, 1.0f, 0.0f));
+    l.add (std::make_unique<P> ("reverbSize", "Reverb Size", 0.0f, 1.0f, 0.45f));
+    l.add (std::make_unique<P> ("reverbDamping", "Reverb Damping", 0.0f, 1.0f, 0.5f));
+    l.add (std::make_unique<P> ("reverbMix", "Reverb Mix", 0.0f, 1.0f, 0.0f));
+    l.add (std::make_unique<B> ("arpEnabled", "Arpeggiator Enabled", false));
+    l.add (std::make_unique<P> ("arpRate", "Arpeggiator Rate", 0.5f, 24.0f, 8.0f));
+    l.add (std::make_unique<P> ("arpGate", "Arpeggiator Gate", 0.05f, 1.0f, 0.72f));
+    // Stage 2: Character & Expressiveness (작업 4, 1, 3)
+    l.add (std::make_unique<P> ("randomPhase", "Random Phase", 0.0f, 1.0f, 0.0f));
+    l.add (std::make_unique<P> ("driftRate", "Drift Rate", 0.05f, 2.0f, 0.3f));
+    l.add (std::make_unique<P> ("driftDepth", "Drift Depth", 0.0f, 1.0f, 0.0f));
+    l.add (std::make_unique<C> ("arpPattern", "Arpeggiator Pattern", juce::StringArray { "Up", "Down", "Up/Down", "Random" }, 0));
+    return l;
+}
+
+HybridWavetableAudioProcessor::HybridWavetableAudioProcessor()
+    : AudioProcessor (BusesProperties().withOutput ("Output", juce::AudioChannelSet::stereo(), true)),
+      parameters (*this, nullptr, "PARAMETERS", makeLayout())
+{
+    for (auto& table : wavetableBuffers)
+        table = wavetable;
+    for (auto& reader : wavetableReaders)
+        reader.store (0, std::memory_order_relaxed);
+    audioWavetable.store (&wavetableBuffers[0], std::memory_order_release);
+    for (auto& mapping : midiCCAssignments)
+        mapping.store (-1, std::memory_order_relaxed);
+    // A generous pool keeps allocation off the real-time thread while allowing
+    // dense chords; JUCE's voice stealing remains CPU-safe under load.
+    for (int i = 0; i < 128; ++i) synth.addVoice (new SynthVoice (parameters));
+    synth.addSound (new SynthSound());
+}
+
+void HybridWavetableAudioProcessor::prepareToPlay (double sr, int block)
+{
+    currentSampleRate = sr; synth.setCurrentPlaybackSampleRate (sr);
+    for (int i = 0; i < synth.getNumVoices(); ++i)
+        if (auto* v = dynamic_cast<SynthVoice*> (synth.getVoice (i))) v->prepare (sr, block, &audioWavetable);
+    if (auto* firstVoice = dynamic_cast<SynthVoice*> (synth.getVoice (0)))
+        setLatencySamples (firstVoice->getSaturationOversamplingLatencySamples());
+    delayBuffer.setSize (2, juce::jmax (1, (int) std::ceil (sr * 1.5)), false, true, true);
+    delayBuffer.clear();
+    delayWritePosition = 0;
+    reverb.prepare ({ sr, (juce::uint32) juce::jmax (1, block), 2 });
+    reverb.reset();
+    arpeggiatedMidi.ensureSize (2048);
+}
+void HybridWavetableAudioProcessor::releaseResources() {}
+bool HybridWavetableAudioProcessor::isBusesLayoutSupported (const BusesLayout& l) const
+{ return l.getMainOutputChannelSet() == juce::AudioChannelSet::mono() || l.getMainOutputChannelSet() == juce::AudioChannelSet::stereo(); }
+void HybridWavetableAudioProcessor::processBlock (juce::AudioBuffer<float>& b, juce::MidiBuffer& m)
+{
+    juce::ScopedNoDenormals noDenormals;
+    for (const auto metadata : m)
+    {
+        const auto message = metadata.getMessage();
+        if (! message.isController())
+            continue;
+
+        const int cc = message.getControllerNumber();
+        const int target = midiLearnTarget.exchange (-1, std::memory_order_acq_rel);
+        if (target >= 0 && target < (int) midiLearnIDs.size())
+        {
+            midiCCAssignments[(size_t) cc].store (target, std::memory_order_release);
+            continue;
+        }
+
+        const int mappedTarget = midiCCAssignments[(size_t) cc].load (std::memory_order_acquire);
+        if (mappedTarget >= 0 && mappedTarget < (int) midiLearnIDs.size())
+            if (auto* parameter = parameters.getParameter (midiLearnIDs[(size_t) mappedTarget]))
+                parameter->setValueNotifyingHost (message.getControllerValue() / 127.0f);
+    }
+
+    processArpeggiator (m, b.getNumSamples());
+    const int wavetableSlot = acquireWavetableForAudio();
+    audioWavetable.store (&wavetableBuffers[(size_t) wavetableSlot], std::memory_order_release);
+    b.clear();
+    synth.renderNextBlock (b, m, 0, b.getNumSamples());
+    releaseWavetableForAudio (wavetableSlot);
+    b.applyGain (juce::Decibels::decibelsToGain (parameters.getRawParameterValue ("output")->load()));
+    if (b.getNumChannels() > 1)
+    {
+        const auto width = juce::jlimit (0.0f, 2.0f, parameters.getRawParameterValue ("masterWidth")->load());
+        for (int i = 0; i < b.getNumSamples(); ++i)
+        {
+            const auto mid = 0.5f * (b.getSample (0, i) + b.getSample (1, i));
+            const auto side = 0.5f * (b.getSample (0, i) - b.getSample (1, i)) * width;
+            b.setSample (0, i, mid + side);
+            b.setSample (1, i, mid - side);
+        }
+    }
+    processEffects (b);
+}
+
+int HybridWavetableAudioProcessor::acquireWavetableForAudio() noexcept
+{
+    // If publication races this callback, retry after releasing the obsolete
+    // slot. This is a bounded lock-free reader-side critical section.
+    for (;;)
+    {
+        const int slot = activeWavetableSlot.load (std::memory_order_acquire);
+        wavetableReaders[(size_t) slot].fetch_add (1, std::memory_order_acq_rel);
+        if (activeWavetableSlot.load (std::memory_order_acquire) == slot)
+            return slot;
+        wavetableReaders[(size_t) slot].fetch_sub (1, std::memory_order_release);
+    }
+}
+
+void HybridWavetableAudioProcessor::releaseWavetableForAudio (int slot) noexcept
+{
+    wavetableReaders[(size_t) slot].fetch_sub (1, std::memory_order_release);
+}
+
+
+void HybridWavetableAudioProcessor::processEffects (juce::AudioBuffer<float>& buffer) noexcept
+{
+    if (delayBuffer.getNumSamples() <= 0)
+        return;
+
+    const int channels = juce::jmin (2, buffer.getNumChannels());
+    const int length = delayBuffer.getNumSamples();
+    const auto delayTime = parameters.getRawParameterValue ("delayTime")->load();
+    const double delaySamplesExact = delayTime * currentSampleRate;
+    const int delaySamplesFloor = juce::jlimit (1, length - 2, (int) std::floor (delaySamplesExact));
+    const float delaySamplesFrac = (float) (delaySamplesExact - std::floor (delaySamplesExact));
+    const float feedback = juce::jlimit (0.0f, 0.9f, parameters.getRawParameterValue ("delayFeedback")->load());
+    const float mix = juce::jlimit (0.0f, 1.0f, parameters.getRawParameterValue ("delayMix")->load());
+    const float reverbMix = juce::jlimit (0.0f, 1.0f, parameters.getRawParameterValue ("reverbMix")->load());
+    if (mix <= 0.0001f && reverbMix <= 0.0001f)
+        return;
+    for (int sample = 0; sample < buffer.getNumSamples(); ++sample)
+    {
+        const int readPos0 = (delayWritePosition + length - delaySamplesFloor) % length;
+        const int readPos1 = (readPos0 + 1) % length;
+        for (int channel = 0; channel < channels; ++channel)
+        {
+            const float dry = buffer.getSample (channel, sample);
+            const float delayed0 = delayBuffer.getSample (channel, readPos0);
+            const float delayed1 = delayBuffer.getSample (channel, readPos1);
+            const float delayed = juce::jmap (delaySamplesFrac, delayed0, delayed1);
+            delayBuffer.setSample (channel, delayWritePosition, dry + delayed * feedback);
+            buffer.setSample (channel, sample, dry + delayed * mix);
+        }
+        delayWritePosition = (delayWritePosition + 1) % length;
+    }
+
+    if (channels == 2)
+    {
+        juce::dsp::Reverb::Parameters settings;
+        settings.roomSize = juce::jlimit (0.0f, 1.0f, parameters.getRawParameterValue ("reverbSize")->load());
+        settings.damping = juce::jlimit (0.0f, 1.0f, parameters.getRawParameterValue ("reverbDamping")->load());
+        settings.wetLevel = reverbMix;
+        settings.dryLevel = 1.0f;
+        settings.width = 1.0f;
+        reverb.setParameters (settings);
+        juce::dsp::AudioBlock<float> block (buffer);
+        reverb.process (juce::dsp::ProcessContextReplacing<float> (block));
+    }
+}
+
+double HybridWavetableAudioProcessor::getTailLengthSeconds() const
+{
+    return 4.5;
+}
+
+
+void HybridWavetableAudioProcessor::processArpeggiator (juce::MidiBuffer& midi, int numSamples) noexcept
+{
+    const bool enabled = parameters.getRawParameterValue ("arpEnabled")->load() >= 0.5f;
+    if (! enabled)
+    {
+        arpeggiatedMidi.clear();
+        if (arpActiveNote >= 0)
+            arpeggiatedMidi.addEvent (juce::MidiMessage::noteOff (1, arpActiveNote), 0);
+        for (const auto metadata : midi)
+            arpeggiatedMidi.addEvent (metadata.getMessage(), metadata.samplePosition);
+        arpActiveNote = -1;
+        arpStep = 0;
+        arpSamplesUntilStep = 0;
+        arpSamplesUntilGateOff = -1;
+        heldNoteVelocity.fill (0.0f);
+        midi.swapWith (arpeggiatedMidi);
+        return;
+    }
+
+    arpeggiatedMidi.clear();
+    for (const auto metadata : midi)
+    {
+        const auto message = metadata.getMessage();
+        if (message.isNoteOn())
+            heldNoteVelocity[(size_t) message.getNoteNumber()] = message.getFloatVelocity();
+        else if (message.isNoteOff())
+            heldNoteVelocity[(size_t) message.getNoteNumber()] = 0.0f;
+        else
+            arpeggiatedMidi.addEvent (message, metadata.samplePosition);
+    }
+
+    std::array<int, 128> notes {};
+    int noteCount = 0;
+    for (int note = 0; note < 128; ++note)
+        if (heldNoteVelocity[(size_t) note] > 0.0f)
+            notes[(size_t) noteCount++] = note;
+    if (noteCount == 0)
+    {
+        if (arpActiveNote >= 0)
+            arpeggiatedMidi.addEvent (juce::MidiMessage::noteOff (1, arpActiveNote), 0);
+        arpActiveNote = -1;
+        arpSamplesUntilStep = 0;
+        arpSamplesUntilGateOff = -1;
+        midi.swapWith (arpeggiatedMidi);
+        return;
+    }
+
+    const float rate = juce::jlimit (0.5f, 24.0f, parameters.getRawParameterValue ("arpRate")->load());
+    const int stepSamples = juce::jmax (1, (int) std::round (currentSampleRate / rate));
+    const float gate = juce::jlimit (0.05f, 1.0f, parameters.getRawParameterValue ("arpGate")->load());
+    const int gateSamples = juce::jlimit (1, stepSamples, (int) std::round (stepSamples * gate));
+    const int pattern = (int) parameters.getRawParameterValue ("arpPattern")->load();
+    int offset = 0;
+    int samplesUntilStep = juce::jmax (0, arpSamplesUntilStep);
+    int samplesUntilGateOff = arpSamplesUntilGateOff;
+    while (offset < numSamples)
+    {
+        const int untilGate = samplesUntilGateOff >= 0 ? samplesUntilGateOff : std::numeric_limits<int>::max();
+        const int nextEvent = juce::jmin (samplesUntilStep, untilGate);
+        const int remaining = numSamples - offset;
+        if (nextEvent >= remaining)
+        {
+            samplesUntilStep -= remaining;
+            if (samplesUntilGateOff >= 0)
+                samplesUntilGateOff -= remaining;
+            break;
+        }
+
+        offset += nextEvent;
+        samplesUntilStep -= nextEvent;
+        if (samplesUntilGateOff >= 0)
+            samplesUntilGateOff -= nextEvent;
+
+        if (samplesUntilGateOff == 0)
+        {
+            if (arpActiveNote >= 0)
+                arpeggiatedMidi.addEvent (juce::MidiMessage::noteOff (1, arpActiveNote), offset);
+            arpActiveNote = -1;
+            samplesUntilGateOff = -1;
+        }
+
+        if (samplesUntilStep == 0)
+        {
+            if (arpActiveNote >= 0)
+                arpeggiatedMidi.addEvent (juce::MidiMessage::noteOff (1, arpActiveNote), offset);
+
+            int index = arpStep++ % noteCount;
+            if (pattern == 1)
+                index = noteCount - 1 - index;
+            else if (pattern == 2 && noteCount > 1)
+            {
+                const int cycle = (arpStep - 1) % (noteCount * 2 - 2);
+                index = cycle < noteCount ? cycle : (noteCount * 2 - 2 - cycle);
+            }
+            else if (pattern == 3)
+            {
+                arpRandomState = arpRandomState * 1664525u + 1013904223u;
+                index = (int) (arpRandomState % (std::uint32_t) noteCount);
+            }
+            arpActiveNote = notes[(size_t) index];
+            arpeggiatedMidi.addEvent (juce::MidiMessage::noteOn (1, arpActiveNote, heldNoteVelocity[(size_t) arpActiveNote]), offset);
+            samplesUntilStep = stepSamples;
+            samplesUntilGateOff = gateSamples;
+        }
+    }
+    arpSamplesUntilStep = samplesUntilStep;
+    arpSamplesUntilGateOff = samplesUntilGateOff;
+    midi.swapWith (arpeggiatedMidi);
+}
+void HybridWavetableAudioProcessor::getStateInformation (juce::MemoryBlock& d)
+{
+    auto state = parameters.copyState();
+    std::unique_ptr<juce::XmlElement> xml (state.createXml());
+
+    juce::MemoryOutputStream tableData;
+    tableData.writeInt (wavetableStateVersion);
+    tableData.writeInt (WavetableData::numTables);
+    tableData.writeInt (WavetableData::tableSize);
+    for (const auto& frame : wavetable.frames)
+        for (const auto sample : frame)
+            tableData.writeFloat (sample);
+
+    auto* tableElement = xml->createNewChildElement ("WAVETABLE");
+    tableElement->addTextElement (tableData.getMemoryBlock().toBase64Encoding());
+
+    auto* midiElement = xml->createNewChildElement ("MIDILEARN");
+    for (size_t cc = 0; cc < midiCCAssignments.size(); ++cc)
+        if (const int target = midiCCAssignments[cc].load (std::memory_order_acquire); target >= 0)
+            midiElement->setAttribute ("cc" + juce::String ((int) cc), target);
+
+    copyXmlToBinary (*xml, d);
+}
+
+void HybridWavetableAudioProcessor::setStateInformation (const void* data, int size)
+{
+    std::unique_ptr<juce::XmlElement> xml (getXmlFromBinary (data, size));
+    if (xml == nullptr || ! xml->hasTagName (parameters.state.getType()))
+        return;
+
+    // The custom payloads are text-bearing XML nodes, which have no direct
+    // ValueTree representation. Strip them before handing the parameter tree
+    // to JUCE so state restore stays assertion-free in debug builds.
+    std::unique_ptr<juce::XmlElement> parameterXml (new juce::XmlElement (*xml));
+    if (auto* table = parameterXml->getChildByName ("WAVETABLE"))
+        parameterXml->removeChildElement (table, true);
+    if (auto* midi = parameterXml->getChildByName ("MIDILEARN"))
+        parameterXml->removeChildElement (midi, true);
+    parameters.replaceState (juce::ValueTree::fromXml (*parameterXml));
+
+    if (const auto* tableElement = xml->getChildByName ("WAVETABLE"))
+    {
+        juce::MemoryBlock tableData;
+        if (tableData.fromBase64Encoding (tableElement->getAllSubText()))
+        {
+            juce::MemoryInputStream input (tableData, false);
+            const int version = input.readInt();
+            const int numTables = input.readInt();
+            const int tableSize = input.readInt();
+            if (version == wavetableStateVersion && numTables == WavetableData::numTables && tableSize == WavetableData::tableSize)
+            {
+                WavetableData restored;
+                for (auto& frame : restored.frames)
+                    for (auto& sample : frame)
+                        sample = input.readFloat();
+                // The frames above were overwritten after WavetableData's
+                // constructor already built mips for the default sine
+                // table, so the restored table needs its own mip rebuild
+                // before it is published to the audio thread.
+                restored.regenerateMips();
+                wavetable = restored;
+                publishWavetable();
+            }
+        }
+    }
+
+    for (auto& mapping : midiCCAssignments)
+        mapping.store (-1, std::memory_order_release);
+    if (const auto* midiElement = xml->getChildByName ("MIDILEARN"))
+        for (int cc = 0; cc < (int) midiCCAssignments.size(); ++cc)
+            midiCCAssignments[(size_t) cc].store (midiElement->getIntAttribute ("cc" + juce::String (cc), -1), std::memory_order_release);
+}
+void HybridWavetableAudioProcessor::loadAudioFile (const juce::File& file)
+{
+    juce::AudioFormatManager fm;
+    fm.registerBasicFormats();
+    std::unique_ptr<juce::AudioFormatReader> r (fm.createReaderFor (file));
+    if (r == nullptr || r->lengthInSamples <= 0 || r->numChannels == 0)
+        return;
+
+    // Bound import to the complete 16-frame table. Sampling from the reader
+    // keeps memory fixed even for long source files while preserving morphing.
+    constexpr int importCapacity = WavetableData::tableSize * WavetableData::numTables;
+    const int importSamples = r->lengthInSamples >= importCapacity ? importCapacity : WavetableData::tableSize;
+    juce::AudioBuffer<float> data (1, importSamples);
+    data.clear();
+    for (int i = 0; i < importSamples; ++i)
+    {
+        const auto sourcePosition = (juce::int64) ((double) i * (double) r->lengthInSamples
+                                                   / (double) importSamples);
+        r->read (&data, i, 1, juce::jmin (sourcePosition, r->lengthInSamples - 1), true, false);
+    }
+    wavetable.loadFromAudio (data);
+    publishWavetable();
+}
+void HybridWavetableAudioProcessor::publishWavetable()
+{
+    const int active = activeWavetableSlot.load (std::memory_order_acquire);
+    for (int offset = 1; offset < wavetableBufferCount; ++offset)
+    {
+        const int candidate = (active + offset) % wavetableBufferCount;
+        if (wavetableReaders[(size_t) candidate].load (std::memory_order_acquire) == 0)
+        {
+            wavetableBuffers[(size_t) candidate] = wavetable;
+            activeWavetableSlot.store (candidate, std::memory_order_release);
+            return;
+        }
+    }
+    // Under pathological GUI publication pressure all spare tables can be in
+    // flight. Dropping this update is safer than touching audio-owned memory;
+    // the next editor move republishes the current editable table.
+}
+const juce::StringArray& HybridWavetableAudioProcessor::getMidiLearnTargets()
+{
+    static const juce::StringArray names { "Osc 1 Position", "Osc 2 Position", "Osc 3 Position", "Cutoff", "Resonance",
+                                           "Filter Drive", "Saturation", "Output", "Amp Attack", "Amp Decay",
+                                           "Amp Sustain", "Amp Release", "Filter Attack", "Filter Decay",
+                                           "Filter Sustain", "Filter Release" };
+    return names;
+}
+const juce::StringArray& HybridWavetableAudioProcessor::getFactoryPresetNames()
+{
+    static const juce::StringArray names {
+        "RND 01 // NEON PULSE", "RND 02 // CHROME PLUCK", "RND 03 // VOID GLASS",
+        "RND 04 // LASER PAD", "RND 05 // ACID VECTOR", "RND 06 // NIGHT DRIVE",
+        "RND 07 // STATIC BLOOM", "RND 08 // GHOST FM", "RND 09 // CIRCUIT BASS",
+        "RND 10 // QUANTUM AIR" };
+    return names;
+}
+void HybridWavetableAudioProcessor::applyFactoryPreset (int index)
+{
+    if (index < 0 || index >= factoryPresetCount)
+        return;
+
+    const auto& preset = getFactoryPresets()[(size_t) index];
+    const auto setParameter = [this] (const char* id, float value)
+    {
+        if (auto* parameter = dynamic_cast<juce::RangedAudioParameter*> (parameters.getParameter (id)))
+            parameter->setValueNotifyingHost (parameter->getNormalisableRange().convertTo0to1 (value));
+    };
+    setParameter ("osc1Pos", preset.osc1Pos);
+    setParameter ("osc2Pos", preset.osc2Pos);
+    setParameter ("osc3Pos", preset.osc3Pos);
+    setParameter ("filterType", (float) preset.filterType);
+    setParameter ("filterSlope", (float) preset.filterSlope);
+    setParameter ("cutoff", preset.cutoff);
+    setParameter ("resonance", preset.resonance);
+    setParameter ("filterDrive", preset.filterDrive);
+    setParameter ("saturation", preset.saturation);
+    setParameter ("output", preset.output);
+    setParameter ("ampAttack", preset.ampAttack);
+    setParameter ("ampDecay", preset.ampDecay);
+    setParameter ("ampSustain", preset.ampSustain);
+    setParameter ("ampRelease", preset.ampRelease);
+    setParameter ("filterAttack", preset.filterAttack);
+    setParameter ("filterDecay", preset.filterDecay);
+    setParameter ("filterSustain", preset.filterSustain);
+    setParameter ("filterRelease", preset.filterRelease);
+}
+void HybridWavetableAudioProcessor::beginMidiLearn (int targetIndex) noexcept
+{
+    midiLearnTarget.store (juce::jlimit (0, (int) midiLearnIDs.size() - 1, targetIndex), std::memory_order_release);
+}
+juce::AudioProcessorEditor* HybridWavetableAudioProcessor::createEditor() { return new HybridWavetableAudioProcessorEditor (*this); }
+juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter() { return new HybridWavetableAudioProcessor(); }
+
