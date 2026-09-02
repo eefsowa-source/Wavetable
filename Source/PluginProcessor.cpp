@@ -140,11 +140,12 @@ HybridWavetableAudioProcessor::HybridWavetableAudioProcessor (std::uint32_t dete
         seed = (std::uint32_t) juce::Random::getSystemRandom().nextInt();
     if (seed == 0u)
         seed = 1u;
-    for (auto& table : wavetableBuffers)
+    wavetableBuffers = std::make_unique<std::array<WavetableData, wavetableBufferCount>>();
+    for (auto& table : *wavetableBuffers)
         table = wavetable;
     for (auto& reader : wavetableReaders)
         reader.store (0, std::memory_order_relaxed);
-    audioWavetable.store (&wavetableBuffers[0], std::memory_order_release);
+    audioWavetable.store (&(*wavetableBuffers)[0], std::memory_order_release);
     for (auto& mapping : midiCCAssignments)
         mapping.store (-1, std::memory_order_relaxed);
     // A generous pool keeps allocation off the real-time thread while allowing
@@ -201,7 +202,7 @@ void HybridWavetableAudioProcessor::processBlock (juce::AudioBuffer<float>& b, j
 
     processArpeggiator (m, b.getNumSamples());
     const int wavetableSlot = acquireWavetableForAudio();
-    audioWavetable.store (&wavetableBuffers[(size_t) wavetableSlot], std::memory_order_release);
+    audioWavetable.store (&(*wavetableBuffers)[(size_t) wavetableSlot], std::memory_order_release);
     b.clear();
     synth.renderNextBlock (b, m, 0, b.getNumSamples());
     releaseWavetableForAudio (wavetableSlot);
@@ -453,16 +454,16 @@ void HybridWavetableAudioProcessor::setStateInformation (const void* data, int s
             const int tableSize = input.readInt();
             if (version == wavetableStateVersion && numTables == WavetableData::numTables && tableSize == WavetableData::tableSize)
             {
-                WavetableData restored;
-                for (auto& frame : restored.frames)
+                auto restored = std::make_unique<WavetableData>();
+                for (auto& frame : restored->frames)
                     for (auto& sample : frame)
                         sample = input.readFloat();
                 // The frames above were overwritten after WavetableData's
                 // constructor already built mips for the default sine
                 // table, so the restored table needs its own mip rebuild
                 // before it is published to the audio thread.
-                restored.regenerateMips();
-                wavetable = restored;
+                restored->regenerateMips();
+                wavetable = *restored;
                 publishWavetable();
             }
         }
@@ -505,7 +506,7 @@ void HybridWavetableAudioProcessor::publishWavetable()
         const int candidate = (active + offset) % wavetableBufferCount;
         if (wavetableReaders[(size_t) candidate].load (std::memory_order_acquire) == 0)
         {
-            wavetableBuffers[(size_t) candidate] = wavetable;
+            (*wavetableBuffers)[(size_t) candidate] = wavetable;
             activeWavetableSlot.store (candidate, std::memory_order_release);
             return;
         }

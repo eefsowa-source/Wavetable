@@ -54,7 +54,9 @@ private:
     void processEffects (juce::AudioBuffer<float>& buffer) noexcept;
 
     juce::Synthesiser synth;
-    std::array<WavetableData, wavetableBufferCount> wavetableBuffers;
+    // Mip-mapped tables are large; keep the publication pool off the stack so
+    // console tests and hosts with small thread stacks remain safe.
+    std::unique_ptr<std::array<WavetableData, wavetableBufferCount>> wavetableBuffers;
     std::array<std::atomic<int>, wavetableBufferCount> wavetableReaders {};
     std::atomic<int> activeWavetableSlot { 0 };
     std::atomic<const WavetableData*> audioWavetable { nullptr };

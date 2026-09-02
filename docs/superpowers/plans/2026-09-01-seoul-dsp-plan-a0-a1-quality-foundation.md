@@ -428,7 +428,7 @@ Commit: `git add Tests/AudioQuality Tests/ProcessorSmokeTests.cpp && git commit 
 - Modify: `Source/DSP/SynthVoice.cpp`
 - Modify: `Tests/AudioQuality/ProcessorQualityTests.cpp`
 
-- [ ] **Step 1: Implement a fixed-state generator**
+- [x] **Step 1: Implement a fixed-state generator**
 
 Use xorshift32 with a non-zero state:
 
@@ -454,7 +454,7 @@ private:
 };
 ```
 
-- [ ] **Step 2: Use normalized phase consistently**
+- [x] **Step 2: Use normalized phase consistently**
 
 Replace every `std::rand()` phase assignment with:
 
@@ -465,7 +465,7 @@ oscillator.setPhase (phase);
 
 Keep `WavetableOscillator::setPhase()` normalized. Do not multiply by `2*pi` anywhere outside trigonometric evaluation.
 
-- [ ] **Step 3: Verify GREEN and commit**
+- [x] **Step 3: Verify GREEN and commit**
 
 Run: `ctest --test-dir Build -R 'ProcessorQuality|ProcessorSmoke' --output-on-failure`
 
