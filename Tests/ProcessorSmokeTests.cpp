@@ -44,6 +44,7 @@ int main()
     const char* foundationIDs[] = { "osc1Level", "osc1Tune", "osc1Unison", "osc1Spread",
                                     "osc2Level", "osc2Tune", "osc2Unison", "osc2Spread",
                                     "osc3Level", "osc3Tune", "osc3Unison", "osc3Spread",
+                                    "osc1Detune", "osc2Detune", "osc3Detune", "unisonKeyTrack",
                                     "filterEnvAmount", "masterWidth" };
     for (const auto* id : foundationIDs)
         ok &= check (processor.parameters.getParameter (id) != nullptr, "expanded synthesis parameter is registered");
