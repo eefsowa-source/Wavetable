@@ -13,7 +13,7 @@ A0+A1 구현과 자동화 기반은 GREEN이다. 다만 현재 acceptance는 `BL
 | --- | --- | --- |
 | Debug 전체 빌드 | PASS | `cmake --build Build -j 4` |
 | CTest 전체 | PASS, 7/7 | `ctest --test-dir Build -C Debug --output-on-failure` |
-| 상태 마이그레이션 | PASS | 커밋 `05b964f`, `ProcessorSmoke` |
+| 상태 마이그레이션 | PASS | `ProcessorSmoke`: 체크인 v1 fixture → v2 저장 → 동일 seed sample-identical |
 | full 매트릭스 전개 | PASS, 2,592개 | [`Build/quality-a1-20260902/report.json`](../../Build/quality-a1-20260902/report.json) |
 | 유한성 | PASS, 0 failures | `report.json: finiteFailureCount = 0` |
 | Golden 비교 | BLOCKED, 2,592 missing | [`Build/quality-a1-20260902/summary.md`](../../Build/quality-a1-20260902/summary.md) |
@@ -56,4 +56,3 @@ A0+A1 구현과 자동화 기반은 GREEN이다. 다만 현재 acceptance는 `BL
 2. 승인된 WAV만 `Tests/AudioQuality/golden/`으로 복사하고 SHA-256·메타데이터를 `golden/manifest.json`에 등록한다.
 3. full runner를 재실행해 `goldenPresent`와 모든 비교 threshold를 확인한다.
 4. 그 결과가 PASS일 때에만 이 문서의 상태를 `ACCEPTED`로 바꾸고 Plan A2를 시작한다.
-

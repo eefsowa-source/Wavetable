@@ -90,7 +90,7 @@ Build/ProcessorQualityTests_artefacts/Debug/ProcessorQualityTests \
 
 ## Task 11 검증
 
-루트 XML에 `stateSchemaVersion=2`를 기록하고, 버전 1 또는 속성 누락 상태를 읽을 때 새 detune/key-track 기본값을 채운다. wavetable payload v1과 MIDI mapping은 기존 방식으로 보존한다. ProcessorSmoke에서 schema 2, legacy migration, wavetable/parameter/MIDI round-trip을 모두 통과했다.
+루트 XML에 `stateSchemaVersion=2`를 기록하고, 버전 1 또는 속성 누락 상태를 읽을 때 새 detune/key-track `PARAM` child 기본값을 채운다. wavetable payload v1과 MIDI mapping은 기존 방식으로 보존한다. 체크인한 v1 fixture를 실제 로드해 old parameter를 확인하고, v2 저장 후 동일 seed 렌더가 sample-identical인지 검증했으며 ProcessorSmoke가 통과했다.
 
 ## Task 12 자동 게이트
 

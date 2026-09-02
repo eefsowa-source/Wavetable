@@ -1,5 +1,7 @@
 #include "../Source/PluginProcessor.h"
+#include <cmath>
 #include <iostream>
+#include <limits>
 
 static bool check (bool condition, const char* message)
 {
@@ -31,6 +33,44 @@ static bool writeTestAudio (const juce::File& file, juce::AudioFormat& format)
     if (writer == nullptr)
         return false;
     return writer->writeFromAudioSampleBuffer (source, 0, source.getNumSamples());
+}
+
+static juce::File locateStateFixture()
+{
+    auto directory = juce::File::getCurrentWorkingDirectory();
+    for (int depth = 0; depth < 8; ++depth)
+    {
+        const auto candidate = directory.getChildFile ("Tests/AudioQuality/state-v1-fixture.b64");
+        if (candidate.existsAsFile())
+            return candidate;
+        const auto parent = directory.getParentDirectory();
+        if (parent == directory)
+            break;
+        directory = parent;
+    }
+    return {};
+}
+
+static float maximumAudioDifference (const juce::AudioBuffer<float>& lhs,
+                                     const juce::AudioBuffer<float>& rhs)
+{
+    if (lhs.getNumChannels() != rhs.getNumChannels() || lhs.getNumSamples() != rhs.getNumSamples())
+        return std::numeric_limits<float>::infinity();
+    float maximum = 0.0f;
+    for (int channel = 0; channel < lhs.getNumChannels(); ++channel)
+        for (int sample = 0; sample < lhs.getNumSamples(); ++sample)
+            maximum = juce::jmax (maximum,
+                                  std::abs (lhs.getSample (channel, sample)
+                                            - rhs.getSample (channel, sample)));
+    return maximum;
+}
+
+static void removeParameterFromXml (juce::XmlElement& xml, const char* id)
+{
+    for (int index = xml.getNumChildElements(); --index >= 0;)
+        if (auto* child = xml.getChildElement (index))
+            if (child->hasTagName ("PARAM") && child->getStringAttribute ("id") == id)
+                xml.removeChildElement (child, true);
 }
 
 int main()
@@ -246,10 +286,10 @@ int main()
     if (savedXml != nullptr)
     {
         savedXml->removeAttribute ("stateSchemaVersion");
-        savedXml->removeAttribute ("osc1Detune");
-        savedXml->removeAttribute ("osc2Detune");
-        savedXml->removeAttribute ("osc3Detune");
-        savedXml->removeAttribute ("unisonKeyTrack");
+        removeParameterFromXml (*savedXml, "osc1Detune");
+        removeParameterFromXml (*savedXml, "osc2Detune");
+        removeParameterFromXml (*savedXml, "osc3Detune");
+        removeParameterFromXml (*savedXml, "unisonKeyTrack");
         juce::MemoryBlock legacyState;
         HybridWavetableAudioProcessor::copyXmlToBinary (*savedXml, legacyState);
         processor.setStateInformation (legacyState.getData(), (int) legacyState.getSize());
@@ -257,6 +297,55 @@ int main()
                      "version-1 state migration fills osc1 detune");
         ok &= check (std::abs (processor.parameters.getRawParameterValue ("unisonKeyTrack")->load()) < 0.001f,
                      "version-1 state migration fills key-track");
+    }
+
+    // Load the checked-in v1 fixture itself, upgrade it to schema 2, and
+    // verify that a same-seed render survives the state round trip exactly.
+    const auto stateFixture = locateStateFixture();
+    juce::MemoryBlock fixtureState;
+    const auto fixtureText = stateFixture.existsAsFile() ? stateFixture.loadFileAsString().trim() : juce::String();
+    juce::MemoryOutputStream fixtureDecoded;
+    const auto fixtureBytesDecoded = stateFixture.existsAsFile()
+                                   && juce::Base64::convertFromBase64 (fixtureDecoded, fixtureText);
+    const auto fixtureXmlText = fixtureBytesDecoded
+                              ? juce::String::fromUTF8 (static_cast<const char*> (fixtureDecoded.getData()),
+                                                        (int) fixtureDecoded.getDataSize())
+                              : juce::String();
+    auto fixtureXml = fixtureBytesDecoded ? juce::XmlDocument::parse (fixtureXmlText) : nullptr;
+    const auto fixtureLoaded = fixtureXml != nullptr;
+    if (fixtureLoaded)
+        HybridWavetableAudioProcessor::copyXmlToBinary (*fixtureXml, fixtureState);
+    ok &= check (fixtureLoaded, "version-1 state fixture is readable");
+    if (fixtureLoaded)
+    {
+        HybridWavetableAudioProcessor legacyProcessor (0x51a7e001u);
+        legacyProcessor.prepareToPlay (48000.0, 256);
+        legacyProcessor.setStateInformation (fixtureState.getData(), (int) fixtureState.getSize());
+        ok &= check (std::abs (legacyProcessor.parameters.getRawParameterValue ("osc1Pos")->load() - 0.5f) < 0.001f,
+                     "fixture preserves legacy oscillator position");
+        ok &= check (std::abs (legacyProcessor.parameters.getRawParameterValue ("osc2Pos")->load() - 0.22f) < 0.001f,
+                     "fixture preserves second legacy oscillator position");
+        ok &= check (std::abs (legacyProcessor.parameters.getRawParameterValue ("osc3Pos")->load() - 0.73f) < 0.001f,
+                     "fixture preserves third legacy oscillator position");
+
+        juce::MemoryBlock upgradedState;
+        legacyProcessor.getStateInformation (upgradedState);
+        std::unique_ptr<juce::XmlElement> upgradedXml (HybridWavetableAudioProcessor::getXmlFromBinary (upgradedState.getData(),
+                                                                                                           (int) upgradedState.getSize()));
+        ok &= check (upgradedXml != nullptr && upgradedXml->getIntAttribute ("stateSchemaVersion", 0) == 2,
+                     "legacy fixture saves as schema version 2");
+
+        HybridWavetableAudioProcessor restoredProcessor (0x51a7e001u);
+        restoredProcessor.prepareToPlay (48000.0, 256);
+        restoredProcessor.setStateInformation (upgradedState.getData(), (int) upgradedState.getSize());
+        juce::AudioBuffer<float> legacyRender (2, 256), restoredRender (2, 256);
+        juce::MidiBuffer legacyMidi, restoredMidi;
+        legacyMidi.addEvent (juce::MidiMessage::noteOn (1, 60, (juce::uint8) 100), 0);
+        restoredMidi.addEvent (juce::MidiMessage::noteOn (1, 60, (juce::uint8) 100), 0);
+        legacyProcessor.processBlock (legacyRender, legacyMidi);
+        restoredProcessor.processBlock (restoredRender, restoredMidi);
+        ok &= check (maximumAudioDifference (legacyRender, restoredRender) == 0.0f,
+                     "version-1 to version-2 render is sample-identical with the same seed");
     }
     juce::MidiBuffer restoredMapping;
     restoredMapping.addEvent (juce::MidiMessage::controllerEvent (1, 74, 32), 0);

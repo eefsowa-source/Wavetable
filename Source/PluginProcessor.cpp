@@ -489,10 +489,25 @@ void HybridWavetableAudioProcessor::setStateInformation (const void* data, int s
     {
         // Version-1 sessions predate the unison quality controls.  Keep every
         // existing value and explicitly fill only the newly introduced fields.
-        const auto setDefaultIfMissing = [&parameterState] (const char* id, float value)
+        const auto hasParameter = [&parameterState] (const char* id)
         {
-            if (! parameterState.hasProperty (id))
-                parameterState.setProperty (id, value, nullptr);
+            for (int index = 0; index < parameterState.getNumChildren(); ++index)
+            {
+                const auto parameter = parameterState.getChild (index);
+                if (parameter.hasType ("PARAM") && parameter.getProperty ("id").toString() == id)
+                    return true;
+            }
+            return false;
+        };
+        const auto setDefaultIfMissing = [&parameterState, &hasParameter] (const char* id, float value)
+        {
+            if (! hasParameter (id))
+            {
+                juce::ValueTree parameter ("PARAM");
+                parameter.setProperty ("id", id, nullptr);
+                parameter.setProperty ("value", value, nullptr);
+                parameterState.addChild (parameter, -1, nullptr);
+            }
         };
         setDefaultIfMissing ("osc1Detune", 12.0f);
         setDefaultIfMissing ("osc2Detune", 12.0f);
