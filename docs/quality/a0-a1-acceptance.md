@@ -15,7 +15,7 @@ A0+A1 구현과 자동화 기반은 GREEN이다. 다만 현재 acceptance는 `BL
 | CTest 전체 | PASS, 7/7 | `ctest --test-dir Build -C Debug --output-on-failure` |
 | 상태 마이그레이션 | PASS | `ProcessorSmoke`: 체크인 v1 fixture → v2 저장 → 동일 seed sample-identical |
 | full 매트릭스 전개 | PASS, 2,592개 | [`Build/quality-a1-20260902/report.json`](../../Build/quality-a1-20260902/report.json); migration 보강 후 smoke 재실행은 [`Build/quality-a1-postmigration/report.json`](../../Build/quality-a1-postmigration/report.json) |
-| 유한성 | PASS, 0 failures | `report.json: finiteFailureCount = 0` |
+| 유한성 | PASS, 0 failures | 2,592개 보고서 전수 스캔에서 `metrics.finite == false` 0건. 집계 필드 `finiteFailureCount`는 전수 실행 이후에 추가되었으므로 해당 `report.json`에는 없고, 재실행본 [`Build/quality-a1-postmigration/report.json`](../../Build/quality-a1-postmigration/report.json)에서 `finiteFailureCount = 0`으로 확인했다. |
 | Golden 비교 | BLOCKED, 2,592 missing | [`Build/quality-a1-20260902/summary.md`](../../Build/quality-a1-20260902/summary.md) |
 
 전체 매트릭스는 다음 조합을 실제 렌더링했다.
@@ -44,6 +44,7 @@ A0+A1 구현과 자동화 기반은 GREEN이다. 다만 현재 acceptance는 `BL
 
 - 빌드: Debug 플러그인·VST3·AU·Standalone 타깃이 컴파일됐다.
 - CTest: 7개 자동 테스트가 통과했다.
+- 실행 바이너리 동일성: 전수 실행본의 `executableSha256`는 `fc920175…`이고, 상태 마이그레이션 보강 이후 현재 러너는 `a787f275…`다. 따라서 2,592건 결과는 마이그레이션 수정 이전 바이너리의 기록이며, Golden 승격 시점에는 현재 바이너리로 전수 재실행해야 한다.
 - pluginval: 로컬 실행 파일이 없어 미실행.
 - auval: Debug AU를 `~/Library/Audio/Plug-Ins/Components/SEOUL DSP.component`에 설치한 뒤에도 `aumu/Eona/Hwbl` 조회가 실패했다(`Cannot get Component's Name strings`, `didn't find the component`). 캐시/호스트 재검색 후 별도 재검증이 필요하다.
 - 호스트 삽입: 미실행.
