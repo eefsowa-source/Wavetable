@@ -1,11 +1,12 @@
 #pragma once
 #include <JuceHeader.h>
 #include "DSP/SynthVoice.h"
+#include <cstdint>
 
 class HybridWavetableAudioProcessor : public juce::AudioProcessor
 {
 public:
-    HybridWavetableAudioProcessor();
+    explicit HybridWavetableAudioProcessor (std::uint32_t deterministicSeed = 0);
     ~HybridWavetableAudioProcessor() override = default;
 
     void prepareToPlay (double sampleRate, int samplesPerBlock) override;
@@ -64,4 +65,3 @@ private:
     double currentSampleRate = 44100.0;
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (HybridWavetableAudioProcessor)
 };
-

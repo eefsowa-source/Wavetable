@@ -14,6 +14,15 @@ namespace
     constexpr int wavetableStateVersion = 1;
     constexpr int factoryPresetCount = 10;
 
+    std::uint32_t splitMix32 (std::uint32_t value) noexcept
+    {
+        value += 0x9e3779b9u;
+        value = (value ^ (value >> 16)) * 0x85ebca6bu;
+        value = (value ^ (value >> 13)) * 0xc2b2ae35u;
+        value ^= value >> 16;
+        return value != 0u ? value : 1u;
+    }
+
     struct FactoryPreset
     {
         float osc1Pos = 0.0f, osc2Pos = 0.0f, osc3Pos = 0.0f;
@@ -122,10 +131,15 @@ static juce::AudioProcessorValueTreeState::ParameterLayout makeLayout()
     return l;
 }
 
-HybridWavetableAudioProcessor::HybridWavetableAudioProcessor()
+HybridWavetableAudioProcessor::HybridWavetableAudioProcessor (std::uint32_t deterministicSeed)
     : AudioProcessor (BusesProperties().withOutput ("Output", juce::AudioChannelSet::stereo(), true)),
       parameters (*this, nullptr, "PARAMETERS", makeLayout())
 {
+    auto seed = deterministicSeed;
+    if (seed == 0u)
+        seed = (std::uint32_t) juce::Random::getSystemRandom().nextInt();
+    if (seed == 0u)
+        seed = 1u;
     for (auto& table : wavetableBuffers)
         table = wavetable;
     for (auto& reader : wavetableReaders)
@@ -135,7 +149,8 @@ HybridWavetableAudioProcessor::HybridWavetableAudioProcessor()
         mapping.store (-1, std::memory_order_relaxed);
     // A generous pool keeps allocation off the real-time thread while allowing
     // dense chords; JUCE's voice stealing remains CPU-safe under load.
-    for (int i = 0; i < 128; ++i) synth.addVoice (new SynthVoice (parameters));
+    for (int i = 0; i < 128; ++i)
+        synth.addVoice (new SynthVoice (parameters, splitMix32 (seed + (std::uint32_t) i)));
     synth.addSound (new SynthSound());
 }
 
@@ -546,4 +561,3 @@ void HybridWavetableAudioProcessor::beginMidiLearn (int targetIndex) noexcept
 }
 juce::AudioProcessorEditor* HybridWavetableAudioProcessor::createEditor() { return new HybridWavetableAudioProcessorEditor (*this); }
 juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter() { return new HybridWavetableAudioProcessor(); }
-

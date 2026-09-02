@@ -1,6 +1,7 @@
 #pragma once
 #include <JuceHeader.h>
 #include "WavetableOscillator.h"
+#include <cstdint>
 
 class SynthSound : public juce::SynthesiserSound
 {
@@ -12,7 +13,7 @@ public:
 class SynthVoice : public juce::SynthesiserVoice
 {
 public:
-    explicit SynthVoice (juce::AudioProcessorValueTreeState&);
+    explicit SynthVoice (juce::AudioProcessorValueTreeState&, std::uint32_t deterministicSeed = 1u);
     bool canPlaySound (juce::SynthesiserSound* sound) override { return dynamic_cast<SynthSound*> (sound) != nullptr; }
     void startNote (int midiNoteNumber, float velocity, juce::SynthesiserSound*, int) override;
     void stopNote (float, bool allowTailOff) override;
@@ -63,5 +64,7 @@ private:
     // Stage 2: Unison & Drift
     std::vector<WavetableOscillator> unisonOscs;
     float driftPhase = 0.0f;
-};
+    std::uint32_t randomState = 1u;
 
+    float nextRandom01() noexcept;
+};

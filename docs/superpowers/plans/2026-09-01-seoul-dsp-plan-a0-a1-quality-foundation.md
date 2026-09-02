@@ -205,7 +205,7 @@ Commit: `git add CMakeLists.txt Tests/AudioQuality && git commit -m "test: add a
 - Modify: `Source/DSP/SynthVoice.h`
 - Modify: `Source/DSP/SynthVoice.cpp`
 
-- [ ] **Step 1: Write RED determinism and MIDI-offset tests**
+- [x] **Step 1: Write RED determinism and MIDI-offset tests**
 
 Declare:
 
@@ -224,7 +224,7 @@ Run: `cmake --build Build --target OfflineRendererTests -j 4`
 
 Expected: RED because the renderer and seed injection do not exist.
 
-- [ ] **Step 2: Add a production-safe seed path**
+- [x] **Step 2: Add a production-safe seed path**
 
 Change the processor constructor to:
 
@@ -236,7 +236,7 @@ explicit HybridWavetableAudioProcessor (std::uint32_t deterministicSeed = 0);
 
 This step only adds seed plumbing. The global `std::rand()` replacement is completed in Task 6.
 
-- [ ] **Step 3: Implement exact block scheduling**
+- [x] **Step 3: Implement exact block scheduling**
 
 `OfflineRenderer::render` must:
 
@@ -252,7 +252,7 @@ This step only adds seed plumbing. The global `std::rand()` replacement is compl
 
 Do not call `processBlock()` with a full-size buffer and then truncate it; the irregular final block is part of the contract.
 
-- [ ] **Step 4: Add the mandatory manifest entries**
+- [x] **Step 4: Add the mandatory manifest entries**
 
 `fixture-manifest.json` must have a top-level `schemaVersion: 1`. Every entry includes a `groups` string array so the runner can select stable sets such as `foundation`, `automation`, `factory`, and `release`. Add entries for:
 
@@ -277,7 +277,7 @@ Also add IDs for silence, notes 24/96/108, rich-saw chromatic, pulse 25/50/75, t
 
 Add `OfflineRenderer.cpp` to the real-processor test sources and create an `OfflineRendererTests` CMake target/test linked to the processor implementation and JUCE modules in the same way as `ProcessorQualityTests`.
 
-- [ ] **Step 5: Verify GREEN and commit**
+- [x] **Step 5: Verify GREEN and commit**
 
 Run:
 

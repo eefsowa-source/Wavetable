@@ -13,7 +13,7 @@
 
 - [x] Task 1 — 복구 가능한 기준점 생성
 - [x] Task 2 — 오디오 품질 지원 라이브러리와 테스트 타깃
-- [ ] Task 3 — 결정적 프로세서 렌더러와 fixture manifest
+- [x] Task 3 — 결정적 프로세서 렌더러와 fixture manifest
 - [ ] Task 4 — Golden 비교와 감사 가능한 품질 보고서
 - [ ] Task 5 — 알려진 A1 결함 RED 테스트 고정
 - [ ] Task 6 — 정규화된 voice PRNG
@@ -46,3 +46,12 @@ ctest --test-dir Build -R 'AudioQualityMetrics|ProcessorQuality' --output-on-fai
 ```
 
 결과: 2/2 통과. 메트릭 실행 파일과 프로세서 생성 smoke가 GREEN이다.
+
+## Task 3 검증
+
+```sh
+cmake --build Build --target OfflineRendererTests ProcessorQualityTests -j 4
+ctest --test-dir Build -R 'OfflineRenderer|ProcessorQuality' --output-on-failure
+```
+
+결과: 2/2 통과. 동일 seed 렌더는 sample-identical, 다른 seed + randomPhase는 onset이 달라지며, MIDI offset과 irregular final block을 확인했다.

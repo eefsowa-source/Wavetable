@@ -1,8 +1,20 @@
 #include "SynthVoice.h"
 
-SynthVoice::SynthVoice (juce::AudioProcessorValueTreeState& p) : params (p)
+SynthVoice::SynthVoice (juce::AudioProcessorValueTreeState& p, std::uint32_t deterministicSeed)
+    : params (p), randomState (deterministicSeed != 0u ? deterministicSeed : 1u)
 {
     filter.setType (juce::dsp::StateVariableTPTFilterType::lowpass);
+}
+
+float SynthVoice::nextRandom01() noexcept
+{
+    // xorshift32 is deterministic, allocation-free, and private to each voice.
+    auto state = randomState != 0u ? randomState : 1u;
+    state ^= state << 13;
+    state ^= state >> 17;
+    state ^= state << 5;
+    randomState = state != 0u ? state : 1u;
+    return (float) (randomState & 0x00ffffffu) / 16777215.0f;
 }
 
 void SynthVoice::prepare (double sr, int blockSize, const std::atomic<const WavetableData*>* wt)
@@ -48,10 +60,10 @@ void SynthVoice::startNote (int midiNoteNumber, float velocity, juce::Synthesise
     // 작업 4: Start phase randomization
     float randomPhaseAmount = value ("randomPhase", 0.0f);
     if (randomPhaseAmount > 0.0f) {
-        float maxPhase = randomPhaseAmount * 6.28318530718f;  // 2π
-        osc1.setPhase (std::rand() / (float)RAND_MAX * maxPhase);
-        osc2.setPhase (std::rand() / (float)RAND_MAX * maxPhase);
-        osc3.setPhase (std::rand() / (float)RAND_MAX * maxPhase);
+        const auto maxPhase = juce::jlimit (0.0f, 1.0f, randomPhaseAmount);
+        osc1.setPhase (nextRandom01() * maxPhase);
+        osc2.setPhase (nextRandom01() * maxPhase);
+        osc3.setPhase (nextRandom01() * maxPhase);
     } else {
         osc1.reset(); osc2.reset(); osc3.reset();
     }
@@ -66,8 +78,8 @@ void SynthVoice::startNote (int midiNoteNumber, float velocity, juce::Synthesise
     for (int i = 0; i < voiceCount; ++i) {
         unisonOscs[i].setFrequency (noteHz);
         if (randomPhaseAmount > 0.0f) {
-            float maxPhase = randomPhaseAmount * 6.28318530718f;
-            unisonOscs[i].setPhase (std::rand() / (float)RAND_MAX * maxPhase);
+            const auto maxPhase = juce::jlimit (0.0f, 1.0f, randomPhaseAmount);
+            unisonOscs[i].setPhase (nextRandom01() * maxPhase);
         } else {
             unisonOscs[i].reset();
         }
@@ -279,4 +291,3 @@ void SynthVoice::renderNextBlock (juce::AudioBuffer<float>& output, int start, i
     }
     if (releasing && ampEnv.isActive() == false) clearCurrentNote();
 }
-

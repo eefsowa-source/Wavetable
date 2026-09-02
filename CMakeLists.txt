@@ -81,6 +81,21 @@ if (BUILD_TESTING)
   set_target_properties(ProcessorQualityTests PROPERTIES MACOSX_DEPLOYMENT_TARGET "12.0")
   add_test(NAME ProcessorQuality COMMAND ProcessorQualityTests)
 
+  juce_add_console_app(OfflineRendererTests PRODUCT_NAME "Offline Renderer Tests")
+  juce_generate_juce_header(OfflineRendererTests)
+  target_sources(OfflineRendererTests PRIVATE
+    Tests/AudioQuality/OfflineRendererTests.cpp
+    Tests/AudioQuality/OfflineRenderer.cpp
+    Source/PluginProcessor.cpp Source/PluginEditor.cpp
+    Source/DSP/WavetableOscillator.cpp Source/DSP/SynthVoice.cpp)
+  target_compile_features(OfflineRendererTests PRIVATE cxx_std_20)
+  target_compile_definitions(OfflineRendererTests PRIVATE JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0)
+  target_link_libraries(OfflineRendererTests PRIVATE
+    AudioQualitySupport juce::juce_audio_utils juce::juce_audio_processors
+    juce::juce_dsp juce::juce_gui_extra)
+  set_target_properties(OfflineRendererTests PROPERTIES MACOSX_DEPLOYMENT_TARGET "12.0")
+  add_test(NAME OfflineRenderer COMMAND OfflineRendererTests)
+
   juce_add_console_app(WavetableTests PRODUCT_NAME "Wavetable Tests")
   juce_generate_juce_header(WavetableTests)
   target_sources(WavetableTests PRIVATE
