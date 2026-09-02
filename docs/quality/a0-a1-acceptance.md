@@ -14,7 +14,7 @@ A0+A1 구현과 자동화 기반은 GREEN이다. 다만 현재 acceptance는 `BL
 | Debug 전체 빌드 | PASS | `cmake --build Build -j 4` |
 | CTest 전체 | PASS, 7/7 | `ctest --test-dir Build -C Debug --output-on-failure` |
 | 상태 마이그레이션 | PASS | `ProcessorSmoke`: 체크인 v1 fixture → v2 저장 → 동일 seed sample-identical |
-| full 매트릭스 전개 | PASS, 2,592개 | [`Build/quality-a1-20260902/report.json`](../../Build/quality-a1-20260902/report.json) |
+| full 매트릭스 전개 | PASS, 2,592개 | [`Build/quality-a1-20260902/report.json`](../../Build/quality-a1-20260902/report.json); migration 보강 후 smoke 재실행은 [`Build/quality-a1-postmigration/report.json`](../../Build/quality-a1-postmigration/report.json) |
 | 유한성 | PASS, 0 failures | `report.json: finiteFailureCount = 0` |
 | Golden 비교 | BLOCKED, 2,592 missing | [`Build/quality-a1-20260902/summary.md`](../../Build/quality-a1-20260902/summary.md) |
 
@@ -45,7 +45,7 @@ A0+A1 구현과 자동화 기반은 GREEN이다. 다만 현재 acceptance는 `BL
 - 빌드: Debug 플러그인·VST3·AU·Standalone 타깃이 컴파일됐다.
 - CTest: 7개 자동 테스트가 통과했다.
 - pluginval: 로컬 실행 파일이 없어 미실행.
-- auval: 설치된 Component를 찾지 못해 실패했다(`aumu/Eona/Hwbl`, `didn't find the component`). 빌드 산출물은 시스템 Component 경로에 설치하지 않았다.
+- auval: Debug AU를 `~/Library/Audio/Plug-Ins/Components/SEOUL DSP.component`에 설치한 뒤에도 `aumu/Eona/Hwbl` 조회가 실패했다(`Cannot get Component's Name strings`, `didn't find the component`). 캐시/호스트 재검색 후 별도 재검증이 필요하다.
 - 호스트 삽입: 미실행.
 - UI 렌더링/스크린샷: 미실행.
 - 실청취: 미실행. 특히 다음 다섯 critical excerpt를 사람 검토 후에만 Golden을 승격한다: clean note, rich saw, transient, delay impulse, combined effects.
