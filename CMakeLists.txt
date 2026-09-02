@@ -49,6 +49,38 @@ set_target_properties(HybridWavetable PROPERTIES
 
 include(CTest)
 if (BUILD_TESTING)
+  add_library(AudioQualitySupport STATIC
+    Tests/AudioQuality/Metrics.cpp)
+  target_compile_features(AudioQualitySupport PUBLIC cxx_std_20)
+  target_compile_definitions(AudioQualitySupport PUBLIC JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0)
+  target_link_libraries(AudioQualitySupport PUBLIC
+    juce::juce_audio_basics juce::juce_audio_formats juce::juce_core juce::juce_dsp)
+  set_target_properties(AudioQualitySupport PROPERTIES MACOSX_DEPLOYMENT_TARGET "12.0")
+
+  juce_add_console_app(AudioQualityMetricsTests PRODUCT_NAME "Audio Quality Metrics Tests")
+  juce_generate_juce_header(AudioQualityMetricsTests)
+  target_sources(AudioQualityMetricsTests PRIVATE
+    Tests/AudioQuality/MetricsTests.cpp)
+  target_compile_features(AudioQualityMetricsTests PRIVATE cxx_std_20)
+  target_compile_definitions(AudioQualityMetricsTests PRIVATE JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0)
+  target_link_libraries(AudioQualityMetricsTests PRIVATE AudioQualitySupport)
+  set_target_properties(AudioQualityMetricsTests PROPERTIES MACOSX_DEPLOYMENT_TARGET "12.0")
+  add_test(NAME AudioQualityMetrics COMMAND AudioQualityMetricsTests)
+
+  juce_add_console_app(ProcessorQualityTests PRODUCT_NAME "Processor Quality Tests")
+  juce_generate_juce_header(ProcessorQualityTests)
+  target_sources(ProcessorQualityTests PRIVATE
+    Tests/AudioQuality/ProcessorQualityTests.cpp
+    Source/PluginProcessor.cpp Source/PluginEditor.cpp
+    Source/DSP/WavetableOscillator.cpp Source/DSP/SynthVoice.cpp)
+  target_compile_features(ProcessorQualityTests PRIVATE cxx_std_20)
+  target_compile_definitions(ProcessorQualityTests PRIVATE JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0)
+  target_link_libraries(ProcessorQualityTests PRIVATE
+    AudioQualitySupport juce::juce_audio_utils juce::juce_audio_processors
+    juce::juce_dsp juce::juce_gui_extra)
+  set_target_properties(ProcessorQualityTests PROPERTIES MACOSX_DEPLOYMENT_TARGET "12.0")
+  add_test(NAME ProcessorQuality COMMAND ProcessorQualityTests)
+
   juce_add_console_app(WavetableTests PRODUCT_NAME "Wavetable Tests")
   juce_generate_juce_header(WavetableTests)
   target_sources(WavetableTests PRIVATE

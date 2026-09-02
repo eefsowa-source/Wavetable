@@ -26,13 +26,13 @@
 - Verify: `Source/`
 - Verify: `Tests/`
 
-- [ ] **Step 1: Verify the current non-repository boundary**
+- [x] **Step 1: Verify the current non-repository boundary**
 
 Run: `git rev-parse --show-toplevel`
 
 Expected: before initialization, Git exits non-zero with `not a git repository`.
 
-- [ ] **Step 2: Add build and release artifacts to `.gitignore`**
+- [x] **Step 2: Add build and release artifacts to `.gitignore`**
 
 Create exactly:
 
@@ -46,7 +46,7 @@ dist/
 *.tmp
 ```
 
-- [ ] **Step 3: Initialize the repository and capture the pre-quality baseline**
+- [x] **Step 3: Initialize the repository and capture the pre-quality baseline**
 
 Run:
 
@@ -70,7 +70,7 @@ Expected: the commit succeeds and `git status --short` prints nothing.
 - Create: `Tests/AudioQuality/MetricsTests.cpp`
 - Create: `Tests/AudioQuality/ProcessorQualityTests.cpp`
 
-- [ ] **Step 1: Add a minimal test harness and metric contracts**
+- [x] **Step 1: Add a minimal test harness and metric contracts**
 
 `TestHarness.h` must expose `expect(bool, const juce::String&)`, count failures, print each failure to `stderr`, and return `0` only when no failures occurred.
 
@@ -117,7 +117,7 @@ double measureInharmonicAliasDbc (const float* samples, int count, double sample
                                   double fundamentalHz, int maximumExpectedHarmonic);
 ```
 
-- [ ] **Step 2: Write RED tests for known mathematical signals**
+- [x] **Step 2: Write RED tests for known mathematical signals**
 
 In `MetricsTests.cpp`, generate rather than load fixtures so tests have no file dependency:
 
@@ -138,7 +138,7 @@ Build/AudioQualityMetricsTests_artefacts/Debug/AudioQualityMetricsTests
 
 Expected: compilation or assertions fail because metric bodies and the CMake target do not exist yet.
 
-- [ ] **Step 3: Implement the metric algorithms**
+- [x] **Step 3: Implement the metric algorithms**
 
 Use these definitions:
 
@@ -152,7 +152,7 @@ Use these definitions:
 
 Clamp logarithm inputs to `1.0e-30`; return negative infinity for exact silence. Unit-test the K-weighting coefficients at 48 and 96 kHz for finiteness and stability rather than hard-coding one sample rate.
 
-- [ ] **Step 4: Add the CMake targets**
+- [x] **Step 4: Add the CMake targets**
 
 Create a static `AudioQualitySupport` library containing `Metrics.cpp`. Link it to `juce::juce_audio_basics`, `juce::juce_audio_formats`, `juce::juce_core`, and `juce::juce_dsp`.
 
@@ -177,7 +177,7 @@ add_test(NAME ProcessorQuality COMMAND ProcessorQualityTests)
 
 Apply the same C++20, JUCE network-disable definitions, and macOS deployment target already used by the existing tests.
 
-- [ ] **Step 5: Verify GREEN and commit**
+- [x] **Step 5: Verify GREEN and commit**
 
 Run:
 
