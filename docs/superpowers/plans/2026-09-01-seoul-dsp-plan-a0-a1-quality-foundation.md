@@ -645,15 +645,15 @@ Commit: `git add Source/PluginProcessor.* Tests/AudioQuality && git commit -m "f
 - Modify: `Tests/AudioQuality/ProcessorQualityTests.cpp`
 - Create: `Tests/AudioQuality/state-v1-fixture.b64`
 
-- [ ] **Step 1: Add a parameter-state schema attribute**
+- [x] **Step 1: Add a parameter-state schema attribute**
 
 Write `stateSchemaVersion=2` on the root XML. Continue reading wavetable payload version 1. When loading a root with no state version, treat it as version 1, preserve every old parameter value, supply `12 cents` for the three new detune parameters and `0` for `unisonKeyTrack`, rebuild mips, and restore MIDI mappings.
 
-- [ ] **Step 2: Add old-state and round-trip tests**
+- [x] **Step 2: Add old-state and round-trip tests**
 
 Store one deterministic version-1 fixture as Base64, load it, verify old parameter IDs and wavetable samples, render, save as version 2, reload, and require sample-identical output with the same seed.
 
-- [ ] **Step 3: Verify and commit**
+- [x] **Step 3: Verify and commit**
 
 Run: `ctest --test-dir Build -R 'ProcessorSmoke|ProcessorQuality|OfflineRenderer' --output-on-failure`
 

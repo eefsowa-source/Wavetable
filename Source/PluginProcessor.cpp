@@ -446,6 +446,7 @@ void HybridWavetableAudioProcessor::getStateInformation (juce::MemoryBlock& d)
 {
     auto state = parameters.copyState();
     std::unique_ptr<juce::XmlElement> xml (state.createXml());
+    xml->setAttribute ("stateSchemaVersion", 2);
 
     juce::MemoryOutputStream tableData;
     tableData.writeInt (wavetableStateVersion);
@@ -480,7 +481,25 @@ void HybridWavetableAudioProcessor::setStateInformation (const void* data, int s
         parameterXml->removeChildElement (table, true);
     if (auto* midi = parameterXml->getChildByName ("MIDILEARN"))
         parameterXml->removeChildElement (midi, true);
-    parameters.replaceState (juce::ValueTree::fromXml (*parameterXml));
+    auto parameterState = juce::ValueTree::fromXml (*parameterXml);
+    if (! parameterState.isValid())
+        return;
+    const auto stateSchemaVersion = xml->getIntAttribute ("stateSchemaVersion", 1);
+    if (stateSchemaVersion < 2)
+    {
+        // Version-1 sessions predate the unison quality controls.  Keep every
+        // existing value and explicitly fill only the newly introduced fields.
+        const auto setDefaultIfMissing = [&parameterState] (const char* id, float value)
+        {
+            if (! parameterState.hasProperty (id))
+                parameterState.setProperty (id, value, nullptr);
+        };
+        setDefaultIfMissing ("osc1Detune", 12.0f);
+        setDefaultIfMissing ("osc2Detune", 12.0f);
+        setDefaultIfMissing ("osc3Detune", 12.0f);
+        setDefaultIfMissing ("unisonKeyTrack", 0.0f);
+    }
+    parameters.replaceState (parameterState);
 
     if (const auto* tableElement = xml->getChildByName ("WAVETABLE"))
     {

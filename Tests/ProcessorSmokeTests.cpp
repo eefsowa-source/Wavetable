@@ -228,6 +228,9 @@ int main()
     processor.parameters.getParameter ("osc3Pos")->setValueNotifyingHost (0.42f);
     juce::MemoryBlock state;
     processor.getStateInformation (state);
+    std::unique_ptr<juce::XmlElement> savedXml (HybridWavetableAudioProcessor::getXmlFromBinary (state.getData(), (int) state.getSize()));
+    ok &= check (savedXml != nullptr && savedXml->getIntAttribute ("stateSchemaVersion", 0) == 2,
+                 "state carries schema version 2");
     processor.wavetable.frames[0][0] = -0.42f;
     processor.publishWavetable();
     processor.parameters.getParameter ("cutoff")->setValueNotifyingHost (0.9f);
@@ -238,6 +241,23 @@ int main()
                  "state restore returns edited wavetable data");
     ok &= check (std::abs (processor.parameters.getRawParameterValue ("osc3Pos")->load() - 0.42f) < 0.001f,
                  "state restore returns third oscillator position");
+    ok &= check (std::abs (processor.parameters.getRawParameterValue ("osc1Detune")->load() - 12.0f) < 0.001f,
+                 "state restore supplies default detune for legacy-compatible state");
+    if (savedXml != nullptr)
+    {
+        savedXml->removeAttribute ("stateSchemaVersion");
+        savedXml->removeAttribute ("osc1Detune");
+        savedXml->removeAttribute ("osc2Detune");
+        savedXml->removeAttribute ("osc3Detune");
+        savedXml->removeAttribute ("unisonKeyTrack");
+        juce::MemoryBlock legacyState;
+        HybridWavetableAudioProcessor::copyXmlToBinary (*savedXml, legacyState);
+        processor.setStateInformation (legacyState.getData(), (int) legacyState.getSize());
+        ok &= check (std::abs (processor.parameters.getRawParameterValue ("osc1Detune")->load() - 12.0f) < 0.001f,
+                     "version-1 state migration fills osc1 detune");
+        ok &= check (std::abs (processor.parameters.getRawParameterValue ("unisonKeyTrack")->load()) < 0.001f,
+                     "version-1 state migration fills key-track");
+    }
     juce::MidiBuffer restoredMapping;
     restoredMapping.addEvent (juce::MidiMessage::controllerEvent (1, 74, 32), 0);
     processor.processBlock (buffer, restoredMapping);
