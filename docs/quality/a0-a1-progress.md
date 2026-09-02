@@ -22,7 +22,7 @@
 - [x] Task 9 — 필터 엔벨로프 octave-domain 변조
 - [x] Task 10 — smoothed equal-power delay dry/wet
 - [x] Task 11 — 상태 스키마 버전과 마이그레이션
-- [ ] Task 12 — A0+A1 전체 게이트와 acceptance 문서
+- [ ] Task 12 — A0+A1 전체 게이트와 acceptance 문서 (자동 게이트 실행, Golden/청취 승격 대기)
 
 ## 기준선 확인
 
@@ -91,3 +91,7 @@ Build/ProcessorQualityTests_artefacts/Debug/ProcessorQualityTests \
 ## Task 11 검증
 
 루트 XML에 `stateSchemaVersion=2`를 기록하고, 버전 1 또는 속성 누락 상태를 읽을 때 새 detune/key-track 기본값을 채운다. wavetable payload v1과 MIDI mapping은 기존 방식으로 보존한다. ProcessorSmoke에서 schema 2, legacy migration, wavetable/parameter/MIDI round-trip을 모두 통과했다.
+
+## Task 12 자동 게이트
+
+Debug 전체 빌드와 CTest 7/7을 통과했다. `AudioQualityRunner --matrix full --write-audio`는 6개 샘플레이트 × 8개 블록 크기 × mono/stereo를 27개 fixture에 적용해 2,592개 보고서와 WAV를 생성했다. 모든 샘플이 finite였지만 Golden manifest가 비어 있어 2,592건이 `golden missing`으로 실패했다. 대표 before/after 수치와 pluginval·auval·호스트·UI·청취 증거의 미확보 상태는 `docs/quality/a0-a1-acceptance.md`에 기록했다. 이 상태에서는 A0+A1을 최종 승격하거나 A2를 시작하지 않는다.

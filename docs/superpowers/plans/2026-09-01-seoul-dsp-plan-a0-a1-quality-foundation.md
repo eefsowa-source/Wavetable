@@ -669,7 +669,7 @@ Commit: `git add Source Tests/AudioQuality Tests/ProcessorSmokeTests.cpp && git 
 - Create after review: `Tests/AudioQuality/golden/*.wav`
 - Verify: `Build/quality-a1/`
 
-- [ ] **Step 1: Build and run all tests**
+- [x] **Step 1: Build and run all tests**
 
 Run:
 
@@ -681,7 +681,7 @@ ctest --test-dir Build --output-on-failure
 
 Expected: `WavetableDSP`, `ProcessorSmoke`, `AudioQualityMetrics`, `OfflineRenderer`, `GoldenComparator`, `UnisonBank`, and `ProcessorQuality` all pass.
 
-- [ ] **Step 2: Run the DSP-change matrix**
+- [x] **Step 2: Run the DSP-change matrix**
 
 Run the quality runner over sample rates `44100,48000,88200,96000,176400,192000`, block sizes `16,32,64,128,256,512,1024,2048`, and mono/stereo layouts. Use an explicit matrix option added to the runner:
 

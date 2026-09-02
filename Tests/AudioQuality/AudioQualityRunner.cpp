@@ -5,7 +5,11 @@
 #include <juce_audio_formats/juce_audio_formats.h>
 #include <juce_cryptography/juce_cryptography.h>
 #include <algorithm>
+#include <array>
+#include <cmath>
 #include <iostream>
+#include <limits>
+#include <vector>
 
 using namespace audioquality;
 
@@ -138,6 +142,145 @@ bool containsGroup (const juce::var& value, const juce::String& group)
                 return true;
     return false;
 }
+
+struct GoldenSpec
+{
+    juce::File file;
+    juce::String sha256;
+    double sampleRate = -1.0;
+    int blockSize = -1;
+    int channels = -1;
+    juce::String parameterStateHash;
+};
+
+juce::File resolveRelativeTo (const juce::File& base, const juce::String& value)
+{
+    if (value.startsWithChar ('/'))
+        return juce::File (value);
+    return base.getChildFile (value);
+}
+
+struct GoldenEntry
+{
+    juce::String id;
+    GoldenSpec spec;
+};
+
+std::vector<GoldenEntry> loadGoldenEntries (const juce::File& fixtureManifest)
+{
+    std::vector<GoldenEntry> entries;
+    const auto manifest = fixtureManifest.getParentDirectory().getChildFile ("golden/manifest.json");
+    if (! manifest.existsAsFile())
+        return entries;
+
+    const auto parsed = juce::JSON::parse (manifest);
+    auto* root = parsed.getDynamicObject();
+    auto* values = root != nullptr ? root->getProperty ("goldens").getArray() : nullptr;
+    if (root == nullptr || (int) root->getProperty ("schemaVersion") != 1 || values == nullptr)
+        return entries;
+
+    const auto base = manifest.getParentDirectory();
+    for (const auto& value : *values)
+    {
+        auto* object = value.getDynamicObject();
+        if (object == nullptr)
+            continue;
+        GoldenEntry entry;
+        entry.id = object->getProperty ("id").toString();
+        const auto fileValue = object->getProperty ("file").toString().isNotEmpty()
+                              ? object->getProperty ("file").toString()
+                              : object->getProperty ("wav").toString();
+        entry.spec.file = resolveRelativeTo (base, fileValue.isNotEmpty() ? fileValue : entry.id + ".wav");
+        entry.spec.sha256 = object->getProperty ("sha256").toString();
+        if (object->hasProperty ("sampleRate")) entry.spec.sampleRate = (double) object->getProperty ("sampleRate");
+        if (object->hasProperty ("blockSize")) entry.spec.blockSize = (int) object->getProperty ("blockSize");
+        if (object->hasProperty ("channels")) entry.spec.channels = (int) object->getProperty ("channels");
+        entry.spec.parameterStateHash = object->getProperty ("parameterStateHash").toString();
+        if (entry.id.isNotEmpty())
+            entries.push_back (std::move (entry));
+    }
+    return entries;
+}
+
+const GoldenEntry* findGolden (const std::vector<GoldenEntry>& entries, const juce::String& id)
+{
+    for (const auto& entry : entries)
+        if (entry.id == id)
+            return &entry;
+    return nullptr;
+}
+
+juce::AudioBuffer<float> readAudioFile (const juce::File& file, double& sampleRate)
+{
+    juce::AudioBuffer<float> result;
+    juce::AudioFormatManager formats;
+    formats.registerBasicFormats();
+    std::unique_ptr<juce::AudioFormatReader> reader (formats.createReaderFor (file));
+    if (reader == nullptr || reader->lengthInSamples <= 0 || reader->numChannels <= 0)
+        return result;
+    sampleRate = reader->sampleRate;
+    result.setSize ((int) reader->numChannels, (int) reader->lengthInSamples, false, true, true);
+    reader->read (&result, 0, result.getNumSamples(), 0, true, true);
+    return result;
+}
+
+std::vector<AudioQualityFixture> expandFixtures (const AudioQualityFixture& source,
+                                                  const juce::String& matrix)
+{
+    const std::vector<double> sampleRates = matrix == "full"
+        ? std::vector<double> { 44100.0, 48000.0, 88200.0, 96000.0, 176400.0, 192000.0 }
+        : std::vector<double> { 48000.0 };
+    const std::vector<int> blockSizes = matrix == "full"
+        ? std::vector<int> { 16, 32, 64, 128, 256, 512, 1024, 2048 }
+        : std::vector<int> { 64, 128, 512 };
+    const std::vector<int> channels = { 1, 2 };
+    std::vector<AudioQualityFixture> result;
+    std::size_t variantIndex = 0;
+    for (const auto sampleRate : sampleRates)
+        for (const auto blockSize : blockSizes)
+            for (const auto channelCount : channels)
+            {
+                auto fixture = source;
+                fixture.sampleRate = sampleRate;
+                fixture.blockSize = blockSize;
+                fixture.channels = channelCount;
+                fixture.id = source.id + "__sr" + juce::String ((int) std::llround (sampleRate))
+                           + "_bs" + juce::String (blockSize) + "_ch" + juce::String (channelCount);
+
+                if (matrix == "full" && ! fixture.midi.empty())
+                {
+                    // Keep the event's block index (and therefore its musical
+                    // timing) while cycling the remainder through the three
+                    // callback-boundary positions. Across the full matrix this
+                    // covers offset 0, block-1, and block/3 without tripling
+                    // the matrix size.
+                    const std::array<int, 3> remainders { 0, juce::jmax (0, blockSize - 1), blockSize / 3 };
+                    const auto boundaryMode = (int) (variantIndex % remainders.size());
+                    for (std::size_t eventIndex = 0; eventIndex < fixture.midi.size(); ++eventIndex)
+                    {
+                        auto& event = fixture.midi[eventIndex];
+                        if (event.sampleOffset <= 0)
+                            continue;
+                        const auto blockIndex = event.sampleOffset / blockSize;
+                        event.sampleOffset = blockIndex * blockSize
+                                           + remainders[(eventIndex + (std::size_t) boundaryMode) % remainders.size()];
+                    }
+                    fixture.id << "_b" << boundaryMode;
+                }
+
+                const auto totalSamples = (int) std::llround ((fixture.durationSeconds + fixture.tailSeconds)
+                                                               * fixture.sampleRate);
+                if (matrix == "full" && totalSamples > 0 && totalSamples % fixture.blockSize == 0)
+                {
+                    // Force the renderer to exercise its short final block.
+                    fixture.durationSeconds += 1.0 / fixture.sampleRate;
+                    fixture.id << "_irr";
+                }
+                result.push_back (std::move (fixture));
+                ++variantIndex;
+            }
+    return result;
+}
 }
 
 int main (int argc, char** argv)
@@ -166,39 +309,92 @@ int main (int argc, char** argv)
     summary << "Manifest schema: " << schemaVersion << "\n\n";
     const auto executable = juce::File::getSpecialLocation (juce::File::currentExecutableFile);
     const auto executableHash = executable.existsAsFile() ? juce::SHA256 (executable).toHexString() : "unavailable";
+    const auto goldenEntries = loadGoldenEntries (options.manifest);
+    int fixtureCount = 0;
+    int finiteFailureCount = 0;
     for (const auto& fixtureValue : *fixtures)
     {
-        auto fixture = fixtureFromVar (fixtureValue);
-        if (fixture.id.isEmpty())
+        const auto baseFixture = fixtureFromVar (fixtureValue);
+        if (baseFixture.id.isEmpty())
             continue;
-        if (options.fixtureId.isNotEmpty() && fixture.id != options.fixtureId)
+        if (options.fixtureId.isNotEmpty() && baseFixture.id != options.fixtureId)
             continue;
         if (options.fixtureGroup.isNotEmpty() && ! containsGroup (fixtureValue, options.fixtureGroup))
             continue;
 
-        const auto rendered = OfflineRenderer::render (fixture, {});
-        QualityReportData report;
-        report.fixtureId = fixture.id;
-        report.manifestSchemaVersion = schemaVersion;
-        report.executableSha256 = executableHash;
-        report.sampleRate = fixture.sampleRate;
-        report.blockSize = fixture.blockSize;
-        report.channels = fixture.channels;
-        report.seed = fixture.randomSeed;
-        report.durationSeconds = fixture.durationSeconds;
-        report.tailSeconds = fixture.tailSeconds;
-        report.metrics = measureAudio (rendered, fixture.sampleRate);
-        report.parameterStateHash = fixtureStateHash (fixture);
-        report.goldenPresent = false;
-        report.passed = false;
-        const auto reportFile = options.outputDirectory.getChildFile (fixture.id + ".json");
-        if (! writeQualityReport (reportFile, report))
-            failures.add (fixture.id + " (report write failed)");
-        else
-            failures.add (fixture.id + " (golden missing)");
-        if (options.writeAudio)
-            writeAudioFile (options.outputDirectory.getChildFile (fixture.id + ".wav"), rendered, fixture.sampleRate);
+        for (const auto& fixture : expandFixtures (baseFixture, options.matrix))
+        {
+            ++fixtureCount;
+            const auto rendered = OfflineRenderer::render (fixture, {});
+            QualityReportData report;
+            report.fixtureId = fixture.id;
+            report.manifestSchemaVersion = schemaVersion;
+            report.executableSha256 = executableHash;
+            report.sampleRate = fixture.sampleRate;
+            report.blockSize = fixture.blockSize;
+            report.channels = fixture.channels;
+            report.seed = fixture.randomSeed;
+            report.durationSeconds = fixture.durationSeconds;
+            report.tailSeconds = fixture.tailSeconds;
+            report.metrics = measureAudio (rendered, fixture.sampleRate);
+            if (! report.metrics.finite)
+                ++finiteFailureCount;
+            report.parameterStateHash = fixtureStateHash (fixture);
+
+            const auto* golden = findGolden (goldenEntries, fixture.id);
+            juce::AudioBuffer<float> goldenAudio;
+            double goldenSampleRate = 0.0;
+            bool metadataMatches = golden != nullptr;
+            if (golden != nullptr)
+            {
+                metadataMatches = golden->spec.file.existsAsFile();
+                if (metadataMatches && golden->spec.sha256.isNotEmpty())
+                    metadataMatches = juce::SHA256 (golden->spec.file).toHexString().equalsIgnoreCase (golden->spec.sha256);
+                goldenAudio = readAudioFile (golden->spec.file, goldenSampleRate);
+                metadataMatches = metadataMatches && goldenAudio.getNumSamples() > 0
+                               && goldenAudio.getNumChannels() == fixture.channels
+                               && std::abs (goldenSampleRate - fixture.sampleRate) < 0.5;
+                if (golden->spec.sampleRate > 0.0)
+                    metadataMatches = metadataMatches && std::abs (golden->spec.sampleRate - fixture.sampleRate) < 0.5;
+                if (golden->spec.blockSize > 0)
+                    metadataMatches = metadataMatches && golden->spec.blockSize == fixture.blockSize;
+                if (golden->spec.channels > 0)
+                    metadataMatches = metadataMatches && golden->spec.channels == fixture.channels;
+                if (golden->spec.parameterStateHash.isNotEmpty())
+                    metadataMatches = metadataMatches && golden->spec.parameterStateHash == report.parameterStateHash;
+            }
+            report.goldenPresent = golden != nullptr && metadataMatches;
+            if (report.goldenPresent)
+            {
+                report.comparison = compareWithGolden (rendered, goldenAudio, fixture.sampleRate);
+                report.passed = report.metrics.finite
+                             && report.comparison.alignedErrorDbFS <= -120.0
+                             && report.comparison.loudnessDelta <= 0.25
+                             && report.comparison.truePeakDeltaDb <= 0.5
+                             && report.comparison.spectralMedianDeltaDb <= 0.5
+                             && report.comparison.spectralP95DeltaDb <= 2.0;
+                if (! report.comparison.identityMatches)
+                    report.firstDivergentBlock = 0;
+            }
+            else
+            {
+                report.passed = false;
+            }
+
+            const auto reportFile = options.outputDirectory.getChildFile (fixture.id + ".json");
+            if (! writeQualityReport (reportFile, report))
+                failures.add (fixture.id + " (report write failed)");
+            else if (! report.goldenPresent)
+                failures.add (fixture.id + (golden == nullptr ? " (golden missing)" : " (golden metadata mismatch)"));
+            else if (! report.passed)
+                failures.add (fixture.id + " (quality threshold failed)");
+            else
+                passes.add (fixture.id);
+            if (options.writeAudio)
+                writeAudioFile (options.outputDirectory.getChildFile (fixture.id + ".wav"), rendered, fixture.sampleRate);
+        }
     }
+    summary << "Matrix: " << options.matrix << "\nFixtures rendered: " << fixtureCount << "\n\n";
     for (const auto& failure : failures)
         summary << "- FAIL: " << failure << "\n";
     for (const auto& pass : passes)
@@ -206,6 +402,24 @@ int main (int argc, char** argv)
     if (failures.isEmpty() && passes.isEmpty())
         summary << "- FAIL: no fixture matched the selector\n";
     options.outputDirectory.getChildFile ("summary.md").replaceWithText (summary);
+
+    auto runReport = std::make_unique<juce::DynamicObject>();
+    runReport->setProperty ("manifestSchemaVersion", schemaVersion);
+    runReport->setProperty ("sourceIdentity", "SEOUL DSP");
+    runReport->setProperty ("matrix", options.matrix);
+    runReport->setProperty ("fixtureCount", fixtureCount);
+    runReport->setProperty ("finiteFailureCount", finiteFailureCount);
+    runReport->setProperty ("passed", failures.isEmpty() && ! passes.isEmpty());
+    juce::Array<juce::var> failureArray;
+    for (const auto& failure : failures)
+        failureArray.add (failure);
+    runReport->setProperty ("failures", juce::var (failureArray));
+    juce::Array<juce::var> passArray;
+    for (const auto& pass : passes)
+        passArray.add (pass);
+    runReport->setProperty ("passes", juce::var (passArray));
+    options.outputDirectory.getChildFile ("report.json")
+        .replaceWithText (juce::JSON::toString (juce::var (runReport.release()), true));
     for (const auto& failure : failures)
         std::cout << "FAIL " << failure << "\n";
     return failures.isEmpty() && ! passes.isEmpty() ? 0 : 1;

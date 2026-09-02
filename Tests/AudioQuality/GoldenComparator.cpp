@@ -55,6 +55,17 @@ double percentile (std::vector<double> values, double fraction)
                                                (int) std::llround (fraction * (values.size() - 1)));
     return values[index];
 }
+
+double absoluteDelta (double lhs, double rhs) noexcept
+{
+    const auto lhsFinite = std::isfinite (lhs);
+    const auto rhsFinite = std::isfinite (rhs);
+    if (! lhsFinite && ! rhsFinite)
+        return 0.0;
+    if (! lhsFinite || ! rhsFinite)
+        return std::numeric_limits<double>::infinity();
+    return std::abs (lhs - rhs);
+}
 }
 
 GoldenComparison compareWithGolden (const juce::AudioBuffer<float>& candidate,
@@ -120,8 +131,8 @@ GoldenComparison compareWithGolden (const juce::AudioBuffer<float>& candidate,
 
     const auto candidateMetrics = measureAudio (candidate, sampleRate);
     const auto goldenMetrics = measureAudio (golden, sampleRate);
-    result.loudnessDelta = std::abs (candidateMetrics.integratedLufs - goldenMetrics.integratedLufs);
-    result.truePeakDeltaDb = std::abs (candidateMetrics.truePeakDbTP - goldenMetrics.truePeakDbTP);
+    result.loudnessDelta = absoluteDelta (candidateMetrics.integratedLufs, goldenMetrics.integratedLufs);
+    result.truePeakDeltaDb = absoluteDelta (candidateMetrics.truePeakDbTP, goldenMetrics.truePeakDbTP);
 
     if (sampleRate > 0.0 && count > 0)
     {
