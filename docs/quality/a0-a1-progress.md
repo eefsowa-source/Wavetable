@@ -17,7 +17,7 @@
 - [x] Task 4 — Golden 비교와 감사 가능한 품질 보고서
 - [x] Task 5 — 알려진 A1 결함 RED 테스트 고정
 - [x] Task 6 — 정규화된 voice PRNG
-- [ ] Task 7 — 모든 활성 smoother 초기화/advance
+- [x] Task 7 — 모든 활성 smoother 초기화/advance
 - [ ] Task 8 — 세 오실레이터 대칭 고정-capacity unison
 - [ ] Task 9 — 필터 엔벨로프 octave-domain 변조
 - [ ] Task 10 — smoothed equal-power delay dry/wet
@@ -79,3 +79,7 @@ Build/ProcessorQualityTests_artefacts/Debug/ProcessorQualityTests \
 ## Task 6 검증
 
 `RealtimeRandom`을 voice별 고정 상태로 도입하고 phase 입력을 `[0, 1)` 정규화 도메인으로 유지했다. ProcessorSmoke는 스택 안전성 보강 후 통과했고, phase RNG 단위 테스트는 정상이며, 미수리 엔벨로프/delay RED는 계속 남겨 두었다.
+
+## Task 7 검증
+
+모든 활성 voice smoother를 host 값으로 초기화하고 sample loop에서 한 번씩 소비했다. wavetable 위치도 LFO가 꺼진 경로를 포함해 샘플별 smoother 값을 사용한다. `WavetableDSP`와 `ProcessorSmoke`는 통과했으며, Task 5의 엔벨로프/delay RED만 의도적으로 남아 있다.

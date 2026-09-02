@@ -42,19 +42,28 @@ void SynthVoice::prepare (double sr, int blockSize, const std::atomic<const Wave
     unisonOscs.resize (16);  // Max 16 voices
     for (auto& osc : unisonOscs) osc.prepare (sr);
     
-    // Initialize smoothed parameters with 50ms ramp time
+    // Initialize smoothed parameters with 50ms ramp time.  Starting both the
+    // current and target values from the host state avoids a startup ramp from
+    // the default zero value.
     const float rampTimeMs = 50.0f;
-    smoothedCutoff.reset (sr, rampTimeMs / 1000.0f);
-    smoothedResonance.reset (sr, rampTimeMs / 1000.0f);
-    smoothedOsc1Level.reset (sr, rampTimeMs / 1000.0f);
-    smoothedOsc2Level.reset (sr, rampTimeMs / 1000.0f);
-    smoothedOsc3Level.reset (sr, rampTimeMs / 1000.0f);
-    smoothedSaturation.reset (sr, rampTimeMs / 1000.0f);
-    smoothedFilterDrive.reset (sr, rampTimeMs / 1000.0f);
-    smoothedWavetable1.reset (sr, rampTimeMs / 1000.0f);
-    smoothedWavetable2.reset (sr, rampTimeMs / 1000.0f);
-    smoothedWavetable3.reset (sr, rampTimeMs / 1000.0f);
-    smoothedFilterEnvAmount.reset (sr, rampTimeMs / 1000.0f);
+    const auto initialiseSmoother = [this, sr, rampTimeMs] (auto& smoother, const char* id, float fallback)
+    {
+        smoother.reset (sr, rampTimeMs / 1000.0f);
+        const auto* parameter = params.getRawParameterValue (id);
+        const auto value = parameter != nullptr ? parameter->load() : fallback;
+        smoother.setCurrentAndTargetValue (value);
+    };
+    initialiseSmoother (smoothedCutoff, "cutoff", 12000.0f);
+    initialiseSmoother (smoothedResonance, "resonance", 0.25f);
+    initialiseSmoother (smoothedOsc1Level, "osc1Level", 0.75f);
+    initialiseSmoother (smoothedOsc2Level, "osc2Level", 0.75f);
+    initialiseSmoother (smoothedOsc3Level, "osc3Level", 0.75f);
+    initialiseSmoother (smoothedSaturation, "saturation", 0.15f);
+    initialiseSmoother (smoothedFilterDrive, "filterDrive", 0.0f);
+    initialiseSmoother (smoothedWavetable1, "osc1Pos", 0.0f);
+    initialiseSmoother (smoothedWavetable2, "osc2Pos", 0.35f);
+    initialiseSmoother (smoothedWavetable3, "osc3Pos", 0.67f);
+    initialiseSmoother (smoothedFilterEnvAmount, "filterEnvAmount", 0.5f);
 }
 
 void SynthVoice::startNote (int midiNoteNumber, float velocity, juce::SynthesiserSound*, int)
@@ -138,7 +147,6 @@ void SynthVoice::renderNextBlock (juce::AudioBuffer<float>& output, int start, i
     smoothedWavetable3.setTargetValue (wt3->load());
     smoothedFilterEnvAmount.setTargetValue (envAmount != nullptr ? envAmount->load() : 0.5f);
     
-    osc1.setPosition (wt1->load()); osc2.setPosition (wt2->load()); osc3.setPosition (wt3->load());
     const auto ratioForSemitones = [] (float semitones) { return std::pow (2.0f, semitones / 12.0f); };
     const float osc1Ratio = ratioForSemitones (params.getRawParameterValue ("osc1Tune")->load());
     const float osc2Ratio = ratioForSemitones (params.getRawParameterValue ("osc2Tune")->load());
@@ -189,13 +197,17 @@ void SynthVoice::renderNextBlock (juce::AudioBuffer<float>& output, int start, i
         const float driftMod = driftDepthValue > 0.0f ? std::sin (juce::MathConstants<float>::twoPi * driftPhase) * driftDepthValue * 0.02f : 0.0f;  // ±2%
         
         // Advance smoothed parameter values
-        smoothedCutoff.getNextValue();
-        smoothedResonance.getNextValue();
+        const float cutoffHz = smoothedCutoff.getNextValue();
+        const float resonance = smoothedResonance.getNextValue();
         const float l1 = smoothedOsc1Level.getNextValue();
         const float l2 = smoothedOsc2Level.getNextValue();
         const float l3 = smoothedOsc3Level.getNextValue();
         const float saturation = smoothedSaturation.getNextValue();
         const float inGain = juce::Decibels::decibelsToGain (smoothedFilterDrive.getNextValue());
+        const float wavetable1 = smoothedWavetable1.getNextValue();
+        const float wavetable2 = smoothedWavetable2.getNextValue();
+        const float wavetable3 = smoothedWavetable3.getNextValue();
+        const float filterEnvAmount = smoothedFilterEnvAmount.getNextValue();
         
         const float lfo1 = lfo1Active ? std::sin (juce::MathConstants<float>::twoPi * lfo1Phase) : 0.0f;
         const float lfo2 = lfo2Active ? std::sin (juce::MathConstants<float>::twoPi * lfo2Phase) : 0.0f;
@@ -226,18 +238,25 @@ void SynthVoice::renderNextBlock (juce::AudioBuffer<float>& output, int start, i
         }
         if (wavetableMod != 0.0f)
         {
-            osc1.setPosition (smoothedWavetable1.getCurrentValue() + wavetableMod);
-            osc2.setPosition (smoothedWavetable2.getCurrentValue() + wavetableMod);
-            osc3.setPosition (smoothedWavetable3.getCurrentValue() + wavetableMod);
+            osc1.setPosition (wavetable1 + wavetableMod);
+            osc2.setPosition (wavetable2 + wavetableMod);
+            osc3.setPosition (wavetable3 + wavetableMod);
+        }
+        else
+        {
+            osc1.setPosition (wavetable1);
+            osc2.setPosition (wavetable2);
+            osc3.setPosition (wavetable3);
         }
         const float env = ampEnv.getNextSample();
         const float fenv = filterEnv.getNextSample();
-        const float envDepth = smoothedFilterEnvAmount.getCurrentValue();
-        const float modulatedCutoff = smoothedCutoff.getCurrentValue() * juce::jlimit (0.05f, 4.0f, 1.0f + envDepth * (fenv * 2.0f - 1.0f) + cutoffMod);
+        const float modulatedCutoff = cutoffHz * juce::jlimit (0.05f, 4.0f,
+                                                                1.0f + filterEnvAmount * (fenv * 2.0f - 1.0f)
+                                                                + cutoffMod);
         filter.setCutoffFrequency (juce::jlimit (20.0f, 20000.0f, modulatedCutoff));
-        filter.setResonance (smoothedResonance.getCurrentValue());
+        filter.setResonance (resonance);
         filter2.setCutoffFrequency (juce::jlimit (20.0f, 20000.0f, modulatedCutoff));
-        filter2.setResonance (smoothedResonance.getCurrentValue());
+        filter2.setResonance (resonance);
         const float osc1Value = osc1.process (*table) * l1;
         const float osc2Value = osc2.process (*table) * l2;
         const float osc3Value = osc3.process (*table) * l3;
@@ -252,7 +271,7 @@ void SynthVoice::renderNextBlock (juce::AudioBuffer<float>& output, int start, i
                 float detuneSemitones = (v - voiceCount/2.0f) * 2.0f * detuneAmount * 12.0f;
                 float detuneRatio = ratioForSemitones (detuneSemitones);
                 unisonOscs[v].setFrequency (noteHz * osc1Ratio * detuneRatio * (pitchSemitones != 0.0f ? ratioForSemitones(pitchSemitones) : 1.0f));
-                unisonOscs[v].setPosition (smoothedWavetable1.getCurrentValue() + wavetableMod);
+                unisonOscs[v].setPosition (wavetable1 + wavetableMod);
                 float uniValue = unisonOscs[v].process (*table) * l1 / voiceCount;
                 unisonLeft += uniValue * osc1Left;
                 unisonRight += uniValue * osc1Right;

@@ -480,11 +480,11 @@ Commit: `git add Source/DSP Tests/AudioQuality && git commit -m "fix: make oscil
 - Modify: `Source/DSP/SynthVoice.cpp`
 - Modify: `Tests/AudioQuality/ProcessorQualityTests.cpp`
 
-- [ ] **Step 1: Initialize without a startup ramp from zero**
+- [x] **Step 1: Initialize without a startup ramp from zero**
 
 After each smoother `reset`, call `setCurrentAndTargetValue()` with the current parameter value. Do this for cutoff, resonance, three oscillator levels, saturation, filter drive, three wavetable positions, and filter envelope amount.
 
-- [ ] **Step 2: Advance and consume one value per rendered sample**
+- [x] **Step 2: Advance and consume one value per rendered sample**
 
 At the top of the sample loop, capture each value exactly once:
 
@@ -499,11 +499,11 @@ const float filterEnvAmount = smoothedFilterEnvAmount.getNextValue();
 
 Use these locals for the entire sample. Never combine `getNextValue()` and `getCurrentValue()` for the same smoother in one sample.
 
-- [ ] **Step 3: Make wavetable position update every sample**
+- [x] **Step 3: Make wavetable position update every sample**
 
 Set all base and unison oscillator positions from the smoothed local plus clamped modulation on every sample, even when modulation depth is zero. This prevents a parameter ramp from being ignored in the no-LFO path.
 
-- [ ] **Step 4: Verify GREEN and commit**
+- [x] **Step 4: Verify GREEN and commit**
 
 Run: `ctest --test-dir Build -R 'ProcessorQuality|ProcessorSmoke|WavetableDSP' --output-on-failure`
 
