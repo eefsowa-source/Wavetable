@@ -15,7 +15,7 @@
 - [x] Task 2 — 오디오 품질 지원 라이브러리와 테스트 타깃
 - [x] Task 3 — 결정적 프로세서 렌더러와 fixture manifest
 - [x] Task 4 — Golden 비교와 감사 가능한 품질 보고서
-- [ ] Task 5 — 알려진 A1 결함 RED 테스트 고정
+- [x] Task 5 — 알려진 A1 결함 RED 테스트 고정
 - [ ] Task 6 — 정규화된 voice PRNG
 - [ ] Task 7 — 모든 활성 smoother 초기화/advance
 - [ ] Task 8 — 세 오실레이터 대칭 고정-capacity unison
@@ -66,3 +66,12 @@ Build/AudioQualityRunner_artefacts/Debug/AudioQualityRunner \
 ```
 
 결과: CTest 3/3 통과. Runner는 등록된 Golden이 없음을 `FAIL (golden missing)`으로 보고하고, `-inf` 메트릭을 문자열과 `metricState: silence`로 유효한 JSON에 기록했다. 진단 오디오는 `Build/quality-baseline` 아래에만 보존했다.
+
+## Task 5 RED 검증
+
+```sh
+Build/ProcessorQualityTests_artefacts/Debug/ProcessorQualityTests \
+  2>&1 | tee Build/quality-baseline/a1-red.txt
+```
+
+결과: 의도된 non-zero. 현재 결함으로 필터 엔벨로프 +/−4 octave와 delay mix 1/0.5 equal-power 검사가 실패하며, 이 로그를 수리 전 증거로 보존했다.

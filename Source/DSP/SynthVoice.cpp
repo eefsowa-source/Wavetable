@@ -1,20 +1,27 @@
 #include "SynthVoice.h"
 
+namespace SeoulDSPQuality
+{
+float filterEnvelopeCutoff (float baseCutoffHz, float envelopeAmount,
+                            float envelopeSample, float sampleRate,
+                            float lfoCutoffOctaves) noexcept
+{
+    const auto multiplier = juce::jlimit (0.05f, 4.0f,
+                                          1.0f + envelopeAmount * (envelopeSample * 2.0f - 1.0f)
+                                          + lfoCutoffOctaves);
+    return juce::jlimit (20.0f, 0.45f * sampleRate, baseCutoffHz * multiplier);
+}
+}
+
 SynthVoice::SynthVoice (juce::AudioProcessorValueTreeState& p, std::uint32_t deterministicSeed)
-    : params (p), randomState (deterministicSeed != 0u ? deterministicSeed : 1u)
+    : params (p), random (deterministicSeed)
 {
     filter.setType (juce::dsp::StateVariableTPTFilterType::lowpass);
 }
 
 float SynthVoice::nextRandom01() noexcept
 {
-    // xorshift32 is deterministic, allocation-free, and private to each voice.
-    auto state = randomState != 0u ? randomState : 1u;
-    state ^= state << 13;
-    state ^= state >> 17;
-    state ^= state << 5;
-    randomState = state != 0u ? state : 1u;
-    return (float) (randomState & 0x00ffffffu) / 16777215.0f;
+    return random.nextUnitFloat();
 }
 
 void SynthVoice::prepare (double sr, int blockSize, const std::atomic<const WavetableData*>* wt)

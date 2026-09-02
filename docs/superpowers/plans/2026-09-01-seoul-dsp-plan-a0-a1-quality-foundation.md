@@ -383,15 +383,15 @@ Commit: `git add CMakeLists.txt Tests/AudioQuality docs/quality && git commit -m
 - Modify: `Tests/AudioQuality/ProcessorQualityTests.cpp`
 - Modify: `Tests/ProcessorSmokeTests.cpp`
 
-- [ ] **Step 1: Add phase-domain and determinism regressions**
+- [x] **Step 1: Add phase-domain and determinism regressions**
 
 Assert that `randomPhase=1` produces at least 16 distinct normalized phase starts across deterministic seeds, every phase is in `[0, 1)`, and repeated renders with the same seed match exactly. The test must fail if phases collapse to the clamped value `1.0`.
 
-- [ ] **Step 2: Add parameter-effect regressions**
+- [x] **Step 2: Add parameter-effect regressions**
 
 For each `osc1Unison`, `osc2Unison`, and `osc3Unison`, isolate that oscillator, render with count 1 and count 4, and require a spectral/stereo change while preserving finite output. Automate `osc1Pos`, `osc2Pos`, `osc3Pos`, and `filterEnvAmount` independently; require the post-ramp render to differ from the pre-ramp render and contain no one-sample discontinuity above `0.25` full scale.
 
-- [ ] **Step 3: Add unison correctness regressions**
+- [x] **Step 3: Add unison correctness regressions**
 
 Expose a testable pure layout function, then assert for counts 1, 2, 4, and 8:
 
@@ -402,11 +402,11 @@ Expose a testable pure layout function, then assert for counts 1, 2, 4, and 8:
 - equal-power channel gains are finite;
 - normalization is `1/sqrt(count)` within `1e-6`.
 
-- [ ] **Step 4: Add filter-envelope and dry/wet regressions**
+- [x] **Step 4: Add filter-envelope and dry/wet regressions**
 
 At a base cutoff of 1 kHz, `filterEnvAmount=+1` must reach approximately +4 octaves at envelope peak before clamping to Nyquist-safe cutoff; `-1` must move approximately -4 octaves. For delay, mix 0 must equal dry, mix 1 must contain no direct sample at time zero, and mix 0.5 must use equal-power gains.
 
-- [ ] **Step 5: Run the focused tests and preserve RED evidence**
+- [x] **Step 5: Run the focused tests and preserve RED evidence**
 
 Run:
 

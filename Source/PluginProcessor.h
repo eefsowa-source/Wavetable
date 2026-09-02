@@ -3,6 +3,12 @@
 #include "DSP/SynthVoice.h"
 #include <cstdint>
 
+struct DelayMixGains
+{
+    float dry = 1.0f;
+    float wet = 0.0f;
+};
+
 class HybridWavetableAudioProcessor : public juce::AudioProcessor
 {
 public:
@@ -38,6 +44,7 @@ public:
     static const juce::StringArray& getFactoryPresetNames();
     void applyFactoryPreset (int index);
     void beginMidiLearn (int targetIndex) noexcept;
+    static DelayMixGains calculateDelayMixGains (float mix) noexcept;
 
 private:
     static constexpr int wavetableBufferCount = 3;

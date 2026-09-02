@@ -154,6 +154,11 @@ HybridWavetableAudioProcessor::HybridWavetableAudioProcessor (std::uint32_t dete
     synth.addSound (new SynthSound());
 }
 
+DelayMixGains HybridWavetableAudioProcessor::calculateDelayMixGains (float mix) noexcept
+{
+    return { 1.0f, juce::jlimit (0.0f, 1.0f, mix) };
+}
+
 void HybridWavetableAudioProcessor::prepareToPlay (double sr, int block)
 {
     currentSampleRate = sr; synth.setCurrentPlaybackSampleRate (sr);
@@ -262,7 +267,8 @@ void HybridWavetableAudioProcessor::processEffects (juce::AudioBuffer<float>& bu
             const float delayed1 = delayBuffer.getSample (channel, readPos1);
             const float delayed = juce::jmap (delaySamplesFrac, delayed0, delayed1);
             delayBuffer.setSample (channel, delayWritePosition, dry + delayed * feedback);
-            buffer.setSample (channel, sample, dry + delayed * mix);
+            const auto gains = calculateDelayMixGains (mix);
+            buffer.setSample (channel, sample, dry * gains.dry + delayed * gains.wet);
         }
         delayWritePosition = (delayWritePosition + 1) % length;
     }

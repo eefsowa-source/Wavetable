@@ -1,7 +1,15 @@
 #pragma once
 #include <JuceHeader.h>
 #include "WavetableOscillator.h"
+#include "RealtimeRandom.h"
 #include <cstdint>
+
+namespace SeoulDSPQuality
+{
+float filterEnvelopeCutoff (float baseCutoffHz, float envelopeAmount,
+                            float envelopeSample, float sampleRate,
+                            float lfoCutoffOctaves = 0.0f) noexcept;
+}
 
 class SynthSound : public juce::SynthesiserSound
 {
@@ -64,7 +72,7 @@ private:
     // Stage 2: Unison & Drift
     std::vector<WavetableOscillator> unisonOscs;
     float driftPhase = 0.0f;
-    std::uint32_t randomState = 1u;
+    RealtimeRandom random { 1u };
 
     float nextRandom01() noexcept;
 };
