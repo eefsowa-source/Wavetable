@@ -47,7 +47,24 @@ A0+A1 구현과 자동화 기반은 GREEN이다. 다만 현재 acceptance는 `BL
 - 실행 바이너리 동일성: 전수 실행본의 `executableSha256`는 `fc920175…`이고, 상태 마이그레이션 보강 이후 현재 러너는 `a787f275…`다. 따라서 2,592건 결과는 마이그레이션 수정 이전 바이너리의 기록이며, Golden 승격 시점에는 현재 바이너리로 전수 재실행해야 한다.
 - pluginval: 로컬 실행 파일이 없어 미실행.
 - auval: Debug AU를 `~/Library/Audio/Plug-Ins/Components/SEOUL DSP.component`에 설치한 뒤에도 `aumu/Eona/Hwbl` 조회가 실패했다(`Cannot get Component's Name strings`, `didn't find the component`). 캐시/호스트 재검색 후 별도 재검증이 필요하다.
-- 호스트 삽입: 미실행.
+  - 2026-09-03 재시도: AudioComponentRegistrar 재시작 후에도 동일 실패.
+    Info.plist 계약(`aumu`/`Hwbl`/`Eona`, factory `SEOUL_DSPAUFactory`)과
+    코드 서명은 정상이고 같은 바이너리를 REAPER가 실제 로드하므로, 이 실패는
+    auval 자체의 컴포넌트 등록 조회 문제로 분류한다. auval 등급은 여전히
+    RED로 유지한다.
+- 호스트 삽입: REAPER 7.79에서 실행했다. 사용자 제작 EONQC ReaScript 프로브
+  (`find-sound-quality-check-tool-2/reascripts/eonqc_probe_seoul.lua`)가 트랙을
+  만들고 `SEOUL DSP`를 삽입했다. 결과:
+  - 호스트가 `AUi: SEOUL DSP (EON Audio)` 인스트루먼트로 로드, enabled=1.
+  - 파라미터 58개 = 프로덕트 55개(소스 레이아웃과 이름·정규화 기본값 전부 일치) +
+    호스트 래퍼 3개(Bypass/Wet/Delta).
+  - 설치된 AU 바이너리 SHA-256 `198637b8…`는 이 워크스페이스 Debug AU 산출물과
+    동일하다. 즉, auval CLI 실패와 무관하게 실제 호스트는 같은 바이너리를
+    정상 스캔·삽입했다.
+  - 원본 증거: `find-sound-quality-check-tool-2/artifacts/seoul-dsp-probe.txt`
+    (2026-09-03 생성).
+  - 이 증거는 auval·UI·실청취와 별개 등급이며, MIDI 발음·오디오 출력은 여전히
+    미검증이다.
 - UI 렌더링/스크린샷: 미실행.
 - 실청취: 미실행. 특히 다음 다섯 critical excerpt를 사람 검토 후에만 Golden을 승격한다: clean note, rich saw, transient, delay impulse, combined effects.
 
