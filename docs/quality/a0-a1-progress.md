@@ -18,9 +18,9 @@
 - [x] Task 5 — 알려진 A1 결함 RED 테스트 고정
 - [x] Task 6 — 정규화된 voice PRNG
 - [x] Task 7 — 모든 활성 smoother 초기화/advance
-- [ ] Task 8 — 세 오실레이터 대칭 고정-capacity unison
-- [ ] Task 9 — 필터 엔벨로프 octave-domain 변조
-- [ ] Task 10 — smoothed equal-power delay dry/wet
+- [x] Task 8 — 세 오실레이터 대칭 고정-capacity unison
+- [x] Task 9 — 필터 엔벨로프 octave-domain 변조
+- [x] Task 10 — smoothed equal-power delay dry/wet
 - [ ] Task 11 — 상태 스키마 버전과 마이그레이션
 - [ ] Task 12 — A0+A1 전체 게이트와 acceptance 문서
 
@@ -83,3 +83,7 @@ Build/ProcessorQualityTests_artefacts/Debug/ProcessorQualityTests \
 ## Task 7 검증
 
 모든 활성 voice smoother를 host 값으로 초기화하고 sample loop에서 한 번씩 소비했다. wavetable 위치도 LFO가 꺼진 경로를 포함해 샘플별 smoother 값을 사용한다. `WavetableDSP`와 `ProcessorSmoke`는 통과했으며, Task 5의 엔벨로프/delay RED만 의도적으로 남아 있다.
+
+## Task 8–10 검증
+
+`OscillatorUnisonBank`를 세 오실레이터에 적용하고, 1/2/4/8 lane 대칭 detune·팬·`1/sqrt(count)` 정규화를 고정했다. `osc1Detune`/`osc2Detune`/`osc3Detune`/`unisonKeyTrack` 파라미터와 UI attachment를 추가했다. 필터 엔벨로프는 ±4 octave 지수 곡선과 Nyquist-safe clamp를 사용하고, master effect는 준비된 smoother와 equal-power delay 법칙을 사용한다. `UnisonBank`, `ProcessorQuality`, `ProcessorSmoke`, `OfflineRenderer`가 모두 통과했다.

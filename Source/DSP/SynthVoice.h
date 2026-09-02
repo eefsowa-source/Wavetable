@@ -2,6 +2,7 @@
 #include <JuceHeader.h>
 #include "WavetableOscillator.h"
 #include "RealtimeRandom.h"
+#include "UnisonBank.h"
 #include <cstdint>
 
 namespace SeoulDSPQuality
@@ -35,9 +36,7 @@ public:
     }
 private:
     juce::AudioProcessorValueTreeState& params;
-    // Stage 2: Unison engine - 3개 OSC를 voiceCount 기반으로 확장
-    WavetableOscillator osc1, osc2, osc3;  // 기본 3개 (호환성)
-    // std::vector<WavetableOscillator> unisonOscs는 header의 Stage 2 섹션에서 정의
+    OscillatorUnisonBank osc1Bank, osc2Bank, osc3Bank;
     // Parameter smoothing: eliminates zipper noise (50ms ramp)
     juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> smoothedCutoff;
     juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> smoothedResonance;
@@ -69,8 +68,6 @@ private:
         juce::dsp::Oversampling<float>::filterHalfBandPolyphaseIIR, false, true };
     juce::AudioBuffer<float> preSaturationBuffer;
     std::vector<float> outputGainScratch;
-    // Stage 2: Unison & Drift
-    std::vector<WavetableOscillator> unisonOscs;
     float driftPhase = 0.0f;
     RealtimeRandom random { 1u };
 

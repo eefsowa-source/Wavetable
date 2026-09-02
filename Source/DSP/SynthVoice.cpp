@@ -6,10 +6,10 @@ float filterEnvelopeCutoff (float baseCutoffHz, float envelopeAmount,
                             float envelopeSample, float sampleRate,
                             float lfoCutoffOctaves) noexcept
 {
-    const auto multiplier = juce::jlimit (0.05f, 4.0f,
-                                          1.0f + envelopeAmount * (envelopeSample * 2.0f - 1.0f)
-                                          + lfoCutoffOctaves);
-    return juce::jlimit (20.0f, 0.45f * sampleRate, baseCutoffHz * multiplier);
+    const auto modulationOctaves = envelopeAmount * 4.0f * juce::jlimit (0.0f, 1.0f, envelopeSample)
+                                 + juce::jlimit (-4.0f, 4.0f, lfoCutoffOctaves);
+    return juce::jlimit (20.0f, 0.45f * sampleRate,
+                         baseCutoffHz * std::exp2 (modulationOctaves));
 }
 }
 
@@ -28,7 +28,7 @@ void SynthVoice::prepare (double sr, int blockSize, const std::atomic<const Wave
 {
     sampleRate = sr;
     tableSource = wt;
-    osc1.prepare (sr); osc2.prepare (sr); osc3.prepare (sr);
+    osc1Bank.prepare (sr); osc2Bank.prepare (sr); osc3Bank.prepare (sr);
     juce::dsp::ProcessSpec spec { sr, (juce::uint32) blockSize, 2 };
     filter.prepare (spec);
     filter2.prepare (spec);
@@ -38,10 +38,6 @@ void SynthVoice::prepare (double sr, int blockSize, const std::atomic<const Wave
     saturationOversampling.reset();
     preSaturationBuffer.setSize (2, juce::jmax (1, blockSize), false, true, true);
     outputGainScratch.assign ((size_t) juce::jmax (1, blockSize), 0.0f);
-    // 작업 1: Initialize unison oscillators
-    unisonOscs.resize (16);  // Max 16 voices
-    for (auto& osc : unisonOscs) osc.prepare (sr);
-    
     // Initialize smoothed parameters with 50ms ramp time.  Starting both the
     // current and target values from the host state avoids a startup ramp from
     // the default zero value.
@@ -70,36 +66,23 @@ void SynthVoice::startNote (int midiNoteNumber, float velocity, juce::Synthesise
 {
     midiNote = midiNoteNumber;
     noteHz = juce::MidiMessage::getMidiNoteInHertz (midiNoteNumber);
-    osc1.setFrequency (noteHz); osc2.setFrequency (noteHz * 1.002f); osc3.setFrequency (noteHz * 0.997f);
     level = velocity; releasing = false;
     auto value = [this] (const char* id, float fallback) { if (auto* p = params.getRawParameterValue (id)) return p->load(); return fallback; };
     // 작업 4: Start phase randomization
     float randomPhaseAmount = value ("randomPhase", 0.0f);
     if (randomPhaseAmount > 0.0f) {
         const auto maxPhase = juce::jlimit (0.0f, 1.0f, randomPhaseAmount);
-        osc1.setPhase (nextRandom01() * maxPhase);
-        osc2.setPhase (nextRandom01() * maxPhase);
-        osc3.setPhase (nextRandom01() * maxPhase);
+        osc1Bank.setRandomPhases (random, maxPhase);
+        osc2Bank.setRandomPhases (random, maxPhase);
+        osc3Bank.setRandomPhases (random, maxPhase);
     } else {
-        osc1.reset(); osc2.reset(); osc3.reset();
+        osc1Bank.resetPhases(); osc2Bank.resetPhases(); osc3Bank.resetPhases();
     }
     ampParams.attack = value ("ampAttack", 0.01f); ampParams.decay = value ("ampDecay", 0.25f); ampParams.sustain = value ("ampSustain", 0.8f); ampParams.release = value ("ampRelease", 0.35f);
     filterParams.attack = value ("filterAttack", 0.01f); filterParams.decay = value ("filterDecay", 0.25f); filterParams.sustain = value ("filterSustain", 0.8f); filterParams.release = value ("filterRelease", 0.35f);
     ampEnv.setParameters (ampParams); filterEnv.setParameters (filterParams);
     ampEnv.noteOn(); filterEnv.noteOn();
     
-    // 작업 1: Initialize unison oscillators
-    int voiceCount = (int)value ("osc1Unison", 1.0f);
-    voiceCount = juce::jlimit (1, 16, voiceCount);
-    for (int i = 0; i < voiceCount; ++i) {
-        unisonOscs[i].setFrequency (noteHz);
-        if (randomPhaseAmount > 0.0f) {
-            const auto maxPhase = juce::jlimit (0.0f, 1.0f, randomPhaseAmount);
-            unisonOscs[i].setPhase (nextRandom01() * maxPhase);
-        } else {
-            unisonOscs[i].reset();
-        }
-    }
 }
 
 void SynthVoice::stopNote (float, bool allowTailOff)
@@ -111,7 +94,6 @@ void SynthVoice::stopNote (float, bool allowTailOff)
 void SynthVoice::renderNextBlock (juce::AudioBuffer<float>& output, int start, int count)
 {
     if (! isVoiceActive()) return;
-    auto value = [this] (const char* id, float fallback) { if (auto* p = params.getRawParameterValue (id)) return p->load(); return fallback; };
     auto* out = output.getWritePointer (0, start);
     auto* outRight = output.getNumChannels() > 1 ? output.getWritePointer (1, start) : nullptr;
     const auto* wt1 = params.getRawParameterValue ("osc1Pos");
@@ -147,13 +129,23 @@ void SynthVoice::renderNextBlock (juce::AudioBuffer<float>& output, int start, i
     smoothedWavetable3.setTargetValue (wt3->load());
     smoothedFilterEnvAmount.setTargetValue (envAmount != nullptr ? envAmount->load() : 0.5f);
     
-    const auto ratioForSemitones = [] (float semitones) { return std::pow (2.0f, semitones / 12.0f); };
+    const auto ratioForSemitones = [] (float semitones) { return std::exp2 (semitones / 12.0f); };
     const float osc1Ratio = ratioForSemitones (params.getRawParameterValue ("osc1Tune")->load());
     const float osc2Ratio = ratioForSemitones (params.getRawParameterValue ("osc2Tune")->load());
     const float osc3Ratio = ratioForSemitones (params.getRawParameterValue ("osc3Tune")->load());
-    osc1.setFrequency (noteHz * osc1Ratio);
-    osc2.setFrequency (noteHz * osc2Ratio);
-    osc3.setFrequency (noteHz * osc3Ratio);
+    const auto countFor = [this] (const char* id)
+    {
+        const auto* parameter = params.getRawParameterValue (id);
+        return juce::jlimit (1, 8, parameter != nullptr ? juce::roundToInt (parameter->load()) : 1);
+    };
+    const int osc1Count = countFor ("osc1Unison");
+    const int osc2Count = countFor ("osc2Unison");
+    const int osc3Count = countFor ("osc3Unison");
+    const float osc1Detune = params.getRawParameterValue ("osc1Detune") != nullptr ? params.getRawParameterValue ("osc1Detune")->load() : 12.0f;
+    const float osc2Detune = params.getRawParameterValue ("osc2Detune") != nullptr ? params.getRawParameterValue ("osc2Detune")->load() : 12.0f;
+    const float osc3Detune = params.getRawParameterValue ("osc3Detune") != nullptr ? params.getRawParameterValue ("osc3Detune")->load() : 12.0f;
+    const float keyTrack = params.getRawParameterValue ("unisonKeyTrack") != nullptr ? params.getRawParameterValue ("unisonKeyTrack")->load() : 0.0f;
+    const float keyTrackScale = juce::jlimit (0.5f, 2.0f, std::exp2 (keyTrack * (float) (midiNote - 60) / 48.0f));
     
     // Note: filter cutoff & resonance will be updated per-sample using smoothed values
     filter.setType (type == 1 ? juce::dsp::StateVariableTPTFilterType::highpass : type == 2 ? juce::dsp::StateVariableTPTFilterType::bandpass : juce::dsp::StateVariableTPTFilterType::lowpass);
@@ -173,19 +165,6 @@ void SynthVoice::renderNextBlock (juce::AudioBuffer<float>& output, int start, i
     const bool lfo2Active = lfo2DepthValue > 0.0001f;
     const float lfo1Increment = lfo1Rate->load() / (float) sampleRate;
     const float lfo2Increment = lfo2Rate->load() / (float) sampleRate;
-    const auto panGains = [] (float pan, float& left, float& right)
-    {
-        const auto clampedPan = juce::jlimit (-1.0f, 1.0f, pan);
-        left = std::sqrt (0.5f * (1.0f - clampedPan));
-        right = std::sqrt (0.5f * (1.0f + clampedPan));
-    };
-    float osc1Left = 0.0f, osc1Right = 0.0f;
-    float osc2Left = 0.0f, osc2Right = 0.0f;
-    float osc3Left = 0.0f, osc3Right = 0.0f;
-    panGains (-juce::jlimit (0.0f, 1.0f, osc1Spread->load()), osc1Left, osc1Right);
-    panGains ( juce::jlimit (0.0f, 1.0f, osc2Spread->load()), osc2Left, osc2Right);
-    const float osc3Pan = (midiNote & 1) == 0 ? -osc3Spread->load() : osc3Spread->load();
-    panGains (osc3Pan, osc3Left, osc3Right);
     auto* preSatLeft = preSaturationBuffer.getWritePointer (0);
     auto* preSatRight = preSaturationBuffer.getWritePointer (1);
     for (int i = 0; i < count; ++i)
@@ -215,7 +194,8 @@ void SynthVoice::renderNextBlock (juce::AudioBuffer<float>& output, int start, i
         lfo2Phase += lfo2Increment;
         lfo1Phase -= std::floor (lfo1Phase);
         lfo2Phase -= std::floor (lfo2Phase);
-        float pitchSemitones = driftMod * 12.0f, cutoffMod = 0.0f;  // 작업 3: Include drift in pitch
+        float pitchSemitones = driftMod * 12.0f;
+        float lfoCutoffOctaves = 0.0f;
         float wavetableMod = 0.0f;
         const auto applyLfo = [&] (float value, float depth, int destination)
         {
@@ -223,63 +203,37 @@ void SynthVoice::renderNextBlock (juce::AudioBuffer<float>& output, int start, i
             switch (destination)
             {
                 case 0: pitchSemitones += amount * 12.0f; break;
-                case 1: cutoffMod += amount; break;
+                case 1: lfoCutoffOctaves += amount * 4.0f; break;
                 default: wavetableMod += amount * 0.25f; break;
             }
         };
         applyLfo (lfo1, lfo1DepthValue, lfo1Target);
         applyLfo (lfo2, lfo2DepthValue, lfo2Target);
-        if (pitchSemitones != 0.0f)
-        {
-            const float pitchRatio = ratioForSemitones (pitchSemitones);
-            osc1.setFrequency (noteHz * osc1Ratio * pitchRatio);
-            osc2.setFrequency (noteHz * osc2Ratio * pitchRatio);
-            osc3.setFrequency (noteHz * osc3Ratio * pitchRatio);
-        }
-        if (wavetableMod != 0.0f)
-        {
-            osc1.setPosition (wavetable1 + wavetableMod);
-            osc2.setPosition (wavetable2 + wavetableMod);
-            osc3.setPosition (wavetable3 + wavetableMod);
-        }
-        else
-        {
-            osc1.setPosition (wavetable1);
-            osc2.setPosition (wavetable2);
-            osc3.setPosition (wavetable3);
-        }
+        const float pitchRatio = ratioForSemitones (pitchSemitones);
         const float env = ampEnv.getNextSample();
         const float fenv = filterEnv.getNextSample();
-        const float modulatedCutoff = cutoffHz * juce::jlimit (0.05f, 4.0f,
-                                                                1.0f + filterEnvAmount * (fenv * 2.0f - 1.0f)
-                                                                + cutoffMod);
-        filter.setCutoffFrequency (juce::jlimit (20.0f, 20000.0f, modulatedCutoff));
+        const float modulatedCutoff = SeoulDSPQuality::filterEnvelopeCutoff (cutoffHz, filterEnvAmount,
+                                                                              fenv, (float) sampleRate,
+                                                                              lfoCutoffOctaves);
+        filter.setCutoffFrequency (modulatedCutoff);
         filter.setResonance (resonance);
-        filter2.setCutoffFrequency (juce::jlimit (20.0f, 20000.0f, modulatedCutoff));
+        filter2.setCutoffFrequency (modulatedCutoff);
         filter2.setResonance (resonance);
-        const float osc1Value = osc1.process (*table) * l1;
-        const float osc2Value = osc2.process (*table) * l2;
-        const float osc3Value = osc3.process (*table) * l3;
-        
-        // 작업 1: Unison processing - render unisonOscs with detuning
-        int voiceCount = (int)value ("osc1Unison", 1.0f);
-        voiceCount = juce::jlimit (1, 16, voiceCount);
-        float unisonLeft = 0.0f, unisonRight = 0.0f;
-        if (voiceCount > 1) {
-            const float detuneAmount = 0.02f;  // ±2% detuning range
-            for (int v = 0; v < voiceCount; ++v) {
-                float detuneSemitones = (v - voiceCount/2.0f) * 2.0f * detuneAmount * 12.0f;
-                float detuneRatio = ratioForSemitones (detuneSemitones);
-                unisonOscs[v].setFrequency (noteHz * osc1Ratio * detuneRatio * (pitchSemitones != 0.0f ? ratioForSemitones(pitchSemitones) : 1.0f));
-                unisonOscs[v].setPosition (wavetable1 + wavetableMod);
-                float uniValue = unisonOscs[v].process (*table) * l1 / voiceCount;
-                unisonLeft += uniValue * osc1Left;
-                unisonRight += uniValue * osc1Right;
-            }
-        }
-        
-        float left = ((osc1Value * osc1Left + osc2Value * osc2Left + osc3Value * osc3Left) + unisonLeft) / (3.0f + (voiceCount > 1 ? 1.0f : 0.0f)) * inGain;
-        float right = ((osc1Value * osc1Right + osc2Value * osc2Right + osc3Value * osc3Right) + unisonRight) / (3.0f + (voiceCount > 1 ? 1.0f : 0.0f)) * inGain;
+        float osc1Left = 0.0f, osc1Right = 0.0f;
+        float osc2Left = 0.0f, osc2Right = 0.0f;
+        float osc3Left = 0.0f, osc3Right = 0.0f;
+        const auto positionOffset = wavetableMod;
+        osc1Bank.processStereo (*table, osc1Count, noteHz * osc1Ratio * pitchRatio,
+                                wavetable1 + positionOffset, osc1Detune * keyTrackScale,
+                                -osc1Spread->load(), osc1Left, osc1Right);
+        osc2Bank.processStereo (*table, osc2Count, noteHz * osc2Ratio * pitchRatio,
+                                wavetable2 + positionOffset, osc2Detune * keyTrackScale,
+                                osc2Spread->load(), osc2Left, osc2Right);
+        osc3Bank.processStereo (*table, osc3Count, noteHz * osc3Ratio * pitchRatio,
+                                wavetable3 + positionOffset, osc3Detune * keyTrackScale,
+                                ((midiNote & 1) == 0 ? -1.0f : 1.0f) * osc3Spread->load(), osc3Left, osc3Right);
+        float left = (osc1Left * l1 + osc2Left * l2 + osc3Left * l3) / 3.0f * inGain;
+        float right = (osc1Right * l1 + osc2Right * l2 + osc3Right * l3) / 3.0f * inGain;
         left = filter.processSample (0, left);
         if (outRight != nullptr)
             right = filter.processSample (1, right);

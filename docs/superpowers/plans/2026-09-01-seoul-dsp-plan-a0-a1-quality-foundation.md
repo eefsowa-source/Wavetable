@@ -524,7 +524,7 @@ Commit: `git add Source/DSP Tests/AudioQuality && git commit -m "fix: advance vo
 - Modify: `Source/PluginEditor.cpp`
 - Modify: `CMakeLists.txt`
 
-- [ ] **Step 1: Define and test the pure unison layout**
+- [x] **Step 1: Define and test the pure unison layout**
 
 ```cpp
 struct UnisonLane
@@ -541,11 +541,11 @@ std::array<UnisonLane, 8> makeUnisonLayout (int count,
 
 For `count > 1`, lane position is `2*i/(count-1)-1`; cents and pan equal that position times their requested range. For `count == 1`, cents and pan are zero. Gain is `1/sqrt(count)` for every active lane. Write the Task 5 assertions as a standalone `UnisonBankTests` target.
 
-- [ ] **Step 2: Add detune controls without changing old IDs**
+- [x] **Step 2: Add detune controls without changing old IDs**
 
 Add `osc1Detune`, `osc2Detune`, and `osc3Detune` float parameters with range `0..50 cents` and default `12 cents`, plus one global `unisonKeyTrack` parameter with range `-1..1` and default `0`. Keep every existing parameter ID and range intact. Quantize the existing float-valued unison counts with `roundToInt()` and clamp them to `1..8`. Add the detune and key-track controls compactly in the oscillator panel; do not change the main information hierarchy or remove existing controls.
 
-- [ ] **Step 3: Replace dynamic unison storage**
+- [x] **Step 3: Replace dynamic unison storage**
 
 Create an `OscillatorUnisonBank` that owns `std::array<WavetableOscillator, 8>`. Add `prepare`, `resetPhases`, `setRandomPhases`, and `processStereo` methods. Instantiate three banks in `SynthVoice`. Remove `std::vector<WavetableOscillator> unisonOscs` and the base-plus-extra double-rendering path.
 
@@ -558,7 +558,7 @@ const float ratio = std::exp2 ((coarseSemitones + modulationSemitones
 
 When key tracking is non-zero, scale the requested detune before layout generation with `exp2(unisonKeyTrack * (midiNote - 60) / 48)`, clamped to `0.5..2.0`. Add tests at MIDI 24/60/108 for negative, zero, and positive tracking; zero tracking must remain exactly the requested cents at every key.
 
-- [ ] **Step 4: Verify all three banks and commit**
+- [x] **Step 4: Verify all three banks and commit**
 
 Run:
 
@@ -577,7 +577,7 @@ Commit: `git add CMakeLists.txt Source Tests/AudioQuality && git commit -m "feat
 - Modify: `Source/DSP/SynthVoice.cpp`
 - Modify: `Tests/AudioQuality/ProcessorQualityTests.cpp`
 
-- [ ] **Step 1: Replace the linear cutoff multiplier**
+- [x] **Step 1: Replace the linear cutoff multiplier**
 
 Use bipolar envelope movement in octaves:
 
@@ -593,7 +593,7 @@ const float safeCutoff = juce::jlimit (20.0f,
 
 Change the LFO cutoff accumulator from an arbitrary linear amount to octaves. At full LFO depth, cap it at `+/- 4 octaves`.
 
-- [ ] **Step 2: Verify across sample rates and commit**
+- [x] **Step 2: Verify across sample rates and commit**
 
 Run the filter-envelope fixture at 44.1, 48, 96, and 192 kHz. Expected: movement is ratio-consistent until the sample-rate-specific safe clamp and no cutoff becomes non-finite.
 
@@ -606,11 +606,11 @@ Commit: `git add Source/DSP Tests/AudioQuality && git commit -m "fix: map filter
 - Modify: `Source/PluginProcessor.cpp`
 - Modify: `Tests/AudioQuality/ProcessorQualityTests.cpp`
 
-- [ ] **Step 1: Add prepared master-effect smoothers**
+- [x] **Step 1: Add prepared master-effect smoothers**
 
 Add linear smoothers for delay time, feedback, delay mix, reverb mix, and master width. Reset them to 50 ms in `prepareToPlay()` and initialize each with `setCurrentAndTargetValue()`.
 
-- [ ] **Step 2: Use an equal-power wet/dry law**
+- [x] **Step 2: Use an equal-power wet/dry law**
 
 For normalized mix `m`:
 
@@ -622,7 +622,7 @@ const float output = dry * dryGain + delayed * wetGain;
 
 The feedback write remains `dry + delayed*feedback`; only the audible output uses dry/wet gains. At mix 1, the direct sample must be absent. Advance each smoother once per sample and set the reverb parameters once per block from smoothed block-end values.
 
-- [ ] **Step 3: Verify automation, tails, and commit**
+- [x] **Step 3: Verify automation, tails, and commit**
 
 Run:
 

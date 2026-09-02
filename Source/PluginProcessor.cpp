@@ -90,7 +90,9 @@ static juce::AudioProcessorValueTreeState::ParameterLayout makeLayout()
         l.add (std::make_unique<P> (prefix + "Tune", prefix + " Tune", -24.0f, 24.0f, osc == 1 ? 0.0f : (osc == 2 ? 7.0f : -7.0f)));
         l.add (std::make_unique<P> (prefix + "Unison", prefix + " Unison", 1.0f, 8.0f, 1.0f));
         l.add (std::make_unique<P> (prefix + "Spread", prefix + " Spread", 0.0f, 1.0f, 0.2f));
+        l.add (std::make_unique<P> (prefix + "Detune", prefix + " Detune", 0.0f, 50.0f, 12.0f));
     }
+    l.add (std::make_unique<P> ("unisonKeyTrack", "Unison Key Track", -1.0f, 1.0f, 0.0f));
     l.add (std::make_unique<C> ("filterType", "Filter Type", juce::StringArray { "Low-pass", "High-pass", "Band-pass" }, 0));
     l.add (std::make_unique<C> ("filterSlope", "Filter Slope", juce::StringArray { "12 dB/oct", "12 dB/oct", "24 dB/oct", "24 dB/oct" }, 3));
     l.add (std::make_unique<P> ("cutoff", "Cutoff", 20.0f, 20000.0f, 12000.0f));
@@ -157,7 +159,9 @@ HybridWavetableAudioProcessor::HybridWavetableAudioProcessor (std::uint32_t dete
 
 DelayMixGains HybridWavetableAudioProcessor::calculateDelayMixGains (float mix) noexcept
 {
-    return { 1.0f, juce::jlimit (0.0f, 1.0f, mix) };
+    const auto normalized = juce::jlimit (0.0f, 1.0f, mix);
+    return { std::cos (0.5f * juce::MathConstants<float>::pi * normalized),
+             std::sin (0.5f * juce::MathConstants<float>::pi * normalized) };
 }
 
 void HybridWavetableAudioProcessor::prepareToPlay (double sr, int block)
@@ -173,6 +177,19 @@ void HybridWavetableAudioProcessor::prepareToPlay (double sr, int block)
     reverb.prepare ({ sr, (juce::uint32) juce::jmax (1, block), 2 });
     reverb.reset();
     arpeggiatedMidi.ensureSize (2048);
+    const float rampSeconds = 0.05f;
+    const auto initialiseEffectSmoother = [this, sr, rampSeconds] (auto& smoother, const char* id, float fallback)
+    {
+        smoother.reset (sr, rampSeconds);
+        const auto* parameter = parameters.getRawParameterValue (id);
+        smoother.setCurrentAndTargetValue (parameter != nullptr ? parameter->load() : fallback);
+    };
+    initialiseEffectSmoother (smoothedDelayTime, "delayTime", 0.32f);
+    initialiseEffectSmoother (smoothedDelayFeedback, "delayFeedback", 0.35f);
+    initialiseEffectSmoother (smoothedDelayMix, "delayMix", 0.0f);
+    initialiseEffectSmoother (smoothedReverbMix, "reverbMix", 0.0f);
+    initialiseEffectSmoother (smoothedMasterWidth, "masterWidth", 1.0f);
+    effectSmoothersNeedInitialisation = true;
 }
 void HybridWavetableAudioProcessor::releaseResources() {}
 bool HybridWavetableAudioProcessor::isBusesLayoutSupported (const BusesLayout& l) const
@@ -180,6 +197,20 @@ bool HybridWavetableAudioProcessor::isBusesLayoutSupported (const BusesLayout& l
 void HybridWavetableAudioProcessor::processBlock (juce::AudioBuffer<float>& b, juce::MidiBuffer& m)
 {
     juce::ScopedNoDenormals noDenormals;
+    if (effectSmoothersNeedInitialisation)
+    {
+        const auto initialiseNow = [this] (auto& smoother, const char* id)
+        {
+            if (const auto* parameter = parameters.getRawParameterValue (id))
+                smoother.setCurrentAndTargetValue (parameter->load());
+        };
+        initialiseNow (smoothedDelayTime, "delayTime");
+        initialiseNow (smoothedDelayFeedback, "delayFeedback");
+        initialiseNow (smoothedDelayMix, "delayMix");
+        initialiseNow (smoothedReverbMix, "reverbMix");
+        initialiseNow (smoothedMasterWidth, "masterWidth");
+        effectSmoothersNeedInitialisation = false;
+    }
     for (const auto metadata : m)
     {
         const auto message = metadata.getMessage();
@@ -209,9 +240,11 @@ void HybridWavetableAudioProcessor::processBlock (juce::AudioBuffer<float>& b, j
     b.applyGain (juce::Decibels::decibelsToGain (parameters.getRawParameterValue ("output")->load()));
     if (b.getNumChannels() > 1)
     {
-        const auto width = juce::jlimit (0.0f, 2.0f, parameters.getRawParameterValue ("masterWidth")->load());
+        smoothedMasterWidth.setTargetValue (juce::jlimit (0.0f, 2.0f,
+                                                          parameters.getRawParameterValue ("masterWidth")->load()));
         for (int i = 0; i < b.getNumSamples(); ++i)
         {
+            const auto width = smoothedMasterWidth.getNextValue();
             const auto mid = 0.5f * (b.getSample (0, i) + b.getSample (1, i));
             const auto side = 0.5f * (b.getSample (0, i) - b.getSample (1, i)) * width;
             b.setSample (0, i, mid + side);
@@ -248,17 +281,24 @@ void HybridWavetableAudioProcessor::processEffects (juce::AudioBuffer<float>& bu
 
     const int channels = juce::jmin (2, buffer.getNumChannels());
     const int length = delayBuffer.getNumSamples();
-    const auto delayTime = parameters.getRawParameterValue ("delayTime")->load();
-    const double delaySamplesExact = delayTime * currentSampleRate;
-    const int delaySamplesFloor = juce::jlimit (1, length - 2, (int) std::floor (delaySamplesExact));
-    const float delaySamplesFrac = (float) (delaySamplesExact - std::floor (delaySamplesExact));
-    const float feedback = juce::jlimit (0.0f, 0.9f, parameters.getRawParameterValue ("delayFeedback")->load());
-    const float mix = juce::jlimit (0.0f, 1.0f, parameters.getRawParameterValue ("delayMix")->load());
-    const float reverbMix = juce::jlimit (0.0f, 1.0f, parameters.getRawParameterValue ("reverbMix")->load());
-    if (mix <= 0.0001f && reverbMix <= 0.0001f)
-        return;
+    smoothedDelayTime.setTargetValue (juce::jlimit (0.03f, 1.5f,
+                                                    parameters.getRawParameterValue ("delayTime")->load()));
+    smoothedDelayFeedback.setTargetValue (juce::jlimit (0.0f, 0.9f,
+                                                        parameters.getRawParameterValue ("delayFeedback")->load()));
+    smoothedDelayMix.setTargetValue (juce::jlimit (0.0f, 1.0f,
+                                                   parameters.getRawParameterValue ("delayMix")->load()));
+    smoothedReverbMix.setTargetValue (juce::jlimit (0.0f, 1.0f,
+                                                    parameters.getRawParameterValue ("reverbMix")->load()));
+    float reverbMix = 0.0f;
     for (int sample = 0; sample < buffer.getNumSamples(); ++sample)
     {
+        const double delaySamplesExact = smoothedDelayTime.getNextValue() * currentSampleRate;
+        const int delaySamplesFloor = juce::jlimit (1, length - 2, (int) std::floor (delaySamplesExact));
+        const float delaySamplesFrac = (float) (delaySamplesExact - std::floor (delaySamplesExact));
+        const float feedback = juce::jlimit (0.0f, 0.9f, smoothedDelayFeedback.getNextValue());
+        const float mix = juce::jlimit (0.0f, 1.0f, smoothedDelayMix.getNextValue());
+        reverbMix = juce::jlimit (0.0f, 1.0f, smoothedReverbMix.getNextValue());
+        const auto gains = calculateDelayMixGains (mix);
         const int readPos0 = (delayWritePosition + length - delaySamplesFloor) % length;
         const int readPos1 = (readPos0 + 1) % length;
         for (int channel = 0; channel < channels; ++channel)
@@ -268,7 +308,6 @@ void HybridWavetableAudioProcessor::processEffects (juce::AudioBuffer<float>& bu
             const float delayed1 = delayBuffer.getSample (channel, readPos1);
             const float delayed = juce::jmap (delaySamplesFrac, delayed0, delayed1);
             delayBuffer.setSample (channel, delayWritePosition, dry + delayed * feedback);
-            const auto gains = calculateDelayMixGains (mix);
             buffer.setSample (channel, sample, dry * gains.dry + delayed * gains.wet);
         }
         delayWritePosition = (delayWritePosition + 1) % length;

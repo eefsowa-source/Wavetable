@@ -33,7 +33,8 @@ target_sources(HybridWavetable PRIVATE
   Source/PluginProcessor.cpp
   Source/PluginEditor.cpp
   Source/DSP/WavetableOscillator.cpp
-  Source/DSP/SynthVoice.cpp)
+  Source/DSP/SynthVoice.cpp
+  Source/DSP/UnisonBank.cpp)
 
 target_compile_features(HybridWavetable PRIVATE cxx_std_20)
 target_compile_definitions(HybridWavetable PRIVATE
@@ -71,8 +72,10 @@ if (BUILD_TESTING)
   juce_generate_juce_header(ProcessorQualityTests)
   target_sources(ProcessorQualityTests PRIVATE
     Tests/AudioQuality/ProcessorQualityTests.cpp
+    Tests/AudioQuality/OfflineRenderer.cpp
     Source/PluginProcessor.cpp Source/PluginEditor.cpp
-    Source/DSP/WavetableOscillator.cpp Source/DSP/SynthVoice.cpp)
+    Source/DSP/WavetableOscillator.cpp Source/DSP/SynthVoice.cpp
+    Source/DSP/UnisonBank.cpp)
   target_compile_features(ProcessorQualityTests PRIVATE cxx_std_20)
   target_compile_definitions(ProcessorQualityTests PRIVATE JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0)
   target_link_libraries(ProcessorQualityTests PRIVATE
@@ -87,7 +90,8 @@ if (BUILD_TESTING)
     Tests/AudioQuality/OfflineRendererTests.cpp
     Tests/AudioQuality/OfflineRenderer.cpp
     Source/PluginProcessor.cpp Source/PluginEditor.cpp
-    Source/DSP/WavetableOscillator.cpp Source/DSP/SynthVoice.cpp)
+    Source/DSP/WavetableOscillator.cpp Source/DSP/SynthVoice.cpp
+    Source/DSP/UnisonBank.cpp)
   target_compile_features(OfflineRendererTests PRIVATE cxx_std_20)
   target_compile_definitions(OfflineRendererTests PRIVATE JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0)
   target_link_libraries(OfflineRendererTests PRIVATE
@@ -115,13 +119,25 @@ if (BUILD_TESTING)
     Tests/AudioQuality/GoldenComparator.cpp
     Tests/AudioQuality/OfflineRenderer.cpp
     Source/PluginProcessor.cpp Source/PluginEditor.cpp
-    Source/DSP/WavetableOscillator.cpp Source/DSP/SynthVoice.cpp)
+    Source/DSP/WavetableOscillator.cpp Source/DSP/SynthVoice.cpp
+    Source/DSP/UnisonBank.cpp)
   target_compile_features(AudioQualityRunner PRIVATE cxx_std_20)
   target_compile_definitions(AudioQualityRunner PRIVATE JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0)
   target_link_libraries(AudioQualityRunner PRIVATE
     AudioQualitySupport juce::juce_audio_utils juce::juce_audio_processors
     juce::juce_audio_formats juce::juce_cryptography juce::juce_dsp juce::juce_gui_extra)
   set_target_properties(AudioQualityRunner PROPERTIES MACOSX_DEPLOYMENT_TARGET "12.0")
+
+  juce_add_console_app(UnisonBankTests PRODUCT_NAME "Unison Bank Tests")
+  juce_generate_juce_header(UnisonBankTests)
+  target_sources(UnisonBankTests PRIVATE
+    Tests/AudioQuality/UnisonBankTests.cpp Source/DSP/UnisonBank.cpp
+    Source/DSP/WavetableOscillator.cpp)
+  target_compile_features(UnisonBankTests PRIVATE cxx_std_20)
+  target_compile_definitions(UnisonBankTests PRIVATE JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0)
+  target_link_libraries(UnisonBankTests PRIVATE juce::juce_audio_basics juce::juce_core juce::juce_dsp)
+  set_target_properties(UnisonBankTests PROPERTIES MACOSX_DEPLOYMENT_TARGET "12.0")
+  add_test(NAME UnisonBank COMMAND UnisonBankTests)
 
   juce_add_console_app(WavetableTests PRODUCT_NAME "Wavetable Tests")
   juce_generate_juce_header(WavetableTests)
@@ -139,7 +155,8 @@ if (BUILD_TESTING)
   target_sources(ProcessorSmokeTests PRIVATE
     Tests/ProcessorSmokeTests.cpp
     Source/PluginProcessor.cpp Source/PluginEditor.cpp
-    Source/DSP/WavetableOscillator.cpp Source/DSP/SynthVoice.cpp)
+    Source/DSP/WavetableOscillator.cpp Source/DSP/SynthVoice.cpp
+    Source/DSP/UnisonBank.cpp)
   target_compile_features(ProcessorSmokeTests PRIVATE cxx_std_20)
   target_compile_definitions(ProcessorSmokeTests PRIVATE JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0)
   target_link_libraries(ProcessorSmokeTests PRIVATE

@@ -64,6 +64,12 @@ private:
     juce::AudioBuffer<float> delayBuffer;
     int delayWritePosition = 0;
     juce::dsp::Reverb reverb;
+    juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> smoothedDelayTime;
+    juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> smoothedDelayFeedback;
+    juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> smoothedDelayMix;
+    juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> smoothedReverbMix;
+    juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> smoothedMasterWidth;
+    bool effectSmoothersNeedInitialisation = true;
 
     std::array<float, 128> heldNoteVelocity {};
     int arpActiveNote = -1, arpStep = 0, arpSamplesUntilStep = 0, arpSamplesUntilGateOff = -1;
