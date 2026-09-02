@@ -14,7 +14,7 @@
 - [x] Task 1 — 복구 가능한 기준점 생성
 - [x] Task 2 — 오디오 품질 지원 라이브러리와 테스트 타깃
 - [x] Task 3 — 결정적 프로세서 렌더러와 fixture manifest
-- [ ] Task 4 — Golden 비교와 감사 가능한 품질 보고서
+- [x] Task 4 — Golden 비교와 감사 가능한 품질 보고서
 - [ ] Task 5 — 알려진 A1 결함 RED 테스트 고정
 - [ ] Task 6 — 정규화된 voice PRNG
 - [ ] Task 7 — 모든 활성 smoother 초기화/advance
@@ -55,3 +55,14 @@ ctest --test-dir Build -R 'OfflineRenderer|ProcessorQuality' --output-on-failure
 ```
 
 결과: 2/2 통과. 동일 seed 렌더는 sample-identical, 다른 seed + randomPhase는 onset이 달라지며, MIDI offset과 irregular final block을 확인했다.
+
+## Task 4 검증
+
+```sh
+ctest --test-dir Build -R 'GoldenComparator|AudioQualityMetrics|OfflineRenderer' --output-on-failure
+Build/AudioQualityRunner_artefacts/Debug/AudioQualityRunner \
+  --manifest Tests/AudioQuality/fixture-manifest.json \
+  --output-dir Build/quality-baseline-recheck --fixture silence --matrix per-build
+```
+
+결과: CTest 3/3 통과. Runner는 등록된 Golden이 없음을 `FAIL (golden missing)`으로 보고하고, `-inf` 메트릭을 문자열과 `metricState: silence`로 유효한 JSON에 기록했다. 진단 오디오는 `Build/quality-baseline` 아래에만 보존했다.

@@ -96,6 +96,33 @@ if (BUILD_TESTING)
   set_target_properties(OfflineRendererTests PROPERTIES MACOSX_DEPLOYMENT_TARGET "12.0")
   add_test(NAME OfflineRenderer COMMAND OfflineRendererTests)
 
+  juce_add_console_app(GoldenComparatorTests PRODUCT_NAME "Golden Comparator Tests")
+  juce_generate_juce_header(GoldenComparatorTests)
+  target_sources(GoldenComparatorTests PRIVATE
+    Tests/AudioQuality/GoldenComparatorTests.cpp
+    Tests/AudioQuality/GoldenComparator.cpp)
+  target_compile_features(GoldenComparatorTests PRIVATE cxx_std_20)
+  target_compile_definitions(GoldenComparatorTests PRIVATE JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0)
+  target_link_libraries(GoldenComparatorTests PRIVATE AudioQualitySupport juce::juce_dsp)
+  set_target_properties(GoldenComparatorTests PROPERTIES MACOSX_DEPLOYMENT_TARGET "12.0")
+  add_test(NAME GoldenComparator COMMAND GoldenComparatorTests)
+
+  juce_add_console_app(AudioQualityRunner PRODUCT_NAME "Audio Quality Runner")
+  juce_generate_juce_header(AudioQualityRunner)
+  target_sources(AudioQualityRunner PRIVATE
+    Tests/AudioQuality/AudioQualityRunner.cpp
+    Tests/AudioQuality/QualityReport.cpp
+    Tests/AudioQuality/GoldenComparator.cpp
+    Tests/AudioQuality/OfflineRenderer.cpp
+    Source/PluginProcessor.cpp Source/PluginEditor.cpp
+    Source/DSP/WavetableOscillator.cpp Source/DSP/SynthVoice.cpp)
+  target_compile_features(AudioQualityRunner PRIVATE cxx_std_20)
+  target_compile_definitions(AudioQualityRunner PRIVATE JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0)
+  target_link_libraries(AudioQualityRunner PRIVATE
+    AudioQualitySupport juce::juce_audio_utils juce::juce_audio_processors
+    juce::juce_audio_formats juce::juce_cryptography juce::juce_dsp juce::juce_gui_extra)
+  set_target_properties(AudioQualityRunner PROPERTIES MACOSX_DEPLOYMENT_TARGET "12.0")
+
   juce_add_console_app(WavetableTests PRODUCT_NAME "Wavetable Tests")
   juce_generate_juce_header(WavetableTests)
   target_sources(WavetableTests PRIVATE

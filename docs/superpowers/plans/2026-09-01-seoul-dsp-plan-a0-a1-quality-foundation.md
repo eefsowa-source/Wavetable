@@ -304,7 +304,7 @@ Commit: `git add CMakeLists.txt Source Tests/AudioQuality && git commit -m "test
 - Create: `docs/quality/README.md`
 - Modify: `CMakeLists.txt`
 
-- [ ] **Step 1: Define the comparison contract and write RED tests**
+- [x] **Step 1: Define the comparison contract and write RED tests**
 
 ```cpp
 struct GoldenComparison
@@ -325,7 +325,7 @@ GoldenComparison compareWithGolden (const juce::AudioBuffer<float>& candidate,
 
 Tests must cover exact equality, a 10-sample shift that aligns, a 33-sample shift that fails, `+0.2 dB` gain that stays inside the normal tolerance, `+0.3 dB` gain that fails, and a deliberate spectral tilt that exceeds the p95 limit.
 
-- [ ] **Step 2: Implement bounded alignment and spectral comparison**
+- [x] **Step 2: Implement bounded alignment and spectral comparison**
 
 Choose the lag in `[-32, 32]` with maximum normalized cross-correlation, crop the common region, then compute aligned RMS error. Compare 1/6-octave log-frequency magnitudes from 40 Hz to `min(18 kHz, 0.45*sampleRate)`, using a floor of `-120 dBFS`. Report median and 95th percentile absolute deviation.
 
@@ -337,7 +337,7 @@ Enforce:
 - true-peak delta `<= 0.5 dB`;
 - spectral median `<= 0.5 dB`, p95 `<= 2 dB` unless the fixture explicitly allows timbral change.
 
-- [ ] **Step 3: Make reports self-identifying**
+- [x] **Step 3: Make reports self-identifying**
 
 The runner accepts only:
 
@@ -355,7 +355,7 @@ Add `GoldenComparator.cpp`, `QualityReport.cpp`, and `OfflineRenderer.cpp` to a 
 
 Do not add a `--promote` switch to the runner; Golden promotion remains a reviewed file operation in Task 5.
 
-- [ ] **Step 4: Capture the current build as diagnostic baseline only**
+- [x] **Step 4: Capture the current build as diagnostic baseline only**
 
 Run:
 
@@ -369,7 +369,7 @@ Build/AudioQualityRunner_artefacts/Debug/AudioQualityRunner \
 
 Expected: the command completes and reports the known A1 defects as failures. Store generated audio only under `Build/quality-baseline`; do not copy it into `Tests/AudioQuality/golden`.
 
-- [ ] **Step 5: Verify comparator tests and commit**
+- [x] **Step 5: Verify comparator tests and commit**
 
 Run: `ctest --test-dir Build -R 'GoldenComparator|AudioQualityMetrics|OfflineRenderer' --output-on-failure`
 
