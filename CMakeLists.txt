@@ -24,6 +24,7 @@ juce_add_plugin(HybridWavetable
   COPY_PLUGIN_AFTER_BUILD TRUE
   PLUGIN_MANUFACTURER_CODE Eona
   PLUGIN_CODE Hwbl
+  AU_SANDBOX_SAFE FALSE
   FORMATS VST3 AU Standalone
   PRODUCT_NAME "SEOUL DSP")
 
@@ -33,6 +34,8 @@ target_sources(HybridWavetable PRIVATE
   Source/PluginProcessor.cpp
   Source/PluginEditor.cpp
   Source/DSP/WavetableOscillator.cpp
+  Source/DSP/WavetableImporter.cpp
+  Source/DSP/OutputSafety.cpp
   Source/DSP/SynthVoice.cpp
   Source/DSP/UnisonBank.cpp)
 
@@ -50,6 +53,33 @@ set_target_properties(HybridWavetable PROPERTIES
 
 include(CTest)
 if (BUILD_TESTING)
+  # Headless UI snapshot used by the design/acceptance review. This renders
+  # the actual editor component without opening a DAW or relying on a logged-in
+  # desktop session, so the PNG remains deterministic and inspectable in CI.
+  add_executable(SeoulDSP_UISnapshot Tools/UiSnapshot.cpp)
+  target_compile_features(SeoulDSP_UISnapshot PRIVATE cxx_std_20)
+  target_compile_definitions(SeoulDSP_UISnapshot PRIVATE
+    JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JUCE_VST3_CAN_REPLACE_VST2=0)
+  target_include_directories(SeoulDSP_UISnapshot PRIVATE
+    ${CMAKE_CURRENT_BINARY_DIR}/HybridWavetable_artefacts/JuceLibraryCode)
+  target_link_libraries(SeoulDSP_UISnapshot PRIVATE
+    HybridWavetable juce::juce_audio_utils juce::juce_audio_processors
+    juce::juce_dsp juce::juce_gui_extra)
+  set_target_properties(SeoulDSP_UISnapshot PROPERTIES
+    MACOSX_DEPLOYMENT_TARGET "12.0")
+
+  add_executable(CpuBench Tools/CpuBench.cpp)
+  target_compile_features(CpuBench PRIVATE cxx_std_20)
+  target_compile_definitions(CpuBench PRIVATE
+    JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JUCE_VST3_CAN_REPLACE_VST2=0)
+  target_include_directories(CpuBench PRIVATE
+    ${CMAKE_CURRENT_BINARY_DIR}/HybridWavetable_artefacts/JuceLibraryCode)
+  target_link_libraries(CpuBench PRIVATE
+    HybridWavetable juce::juce_audio_utils juce::juce_audio_processors
+    juce::juce_dsp juce::juce_gui_extra)
+  set_target_properties(CpuBench PROPERTIES
+    MACOSX_DEPLOYMENT_TARGET "12.0")
+
   add_library(AudioQualitySupport STATIC
     Tests/AudioQuality/Metrics.cpp)
   target_compile_features(AudioQualitySupport PUBLIC cxx_std_20)
@@ -74,7 +104,7 @@ if (BUILD_TESTING)
     Tests/AudioQuality/ProcessorQualityTests.cpp
     Tests/AudioQuality/OfflineRenderer.cpp
     Source/PluginProcessor.cpp Source/PluginEditor.cpp
-    Source/DSP/WavetableOscillator.cpp Source/DSP/SynthVoice.cpp
+    Source/DSP/WavetableOscillator.cpp Source/DSP/WavetableImporter.cpp Source/DSP/OutputSafety.cpp Source/DSP/SynthVoice.cpp
     Source/DSP/UnisonBank.cpp)
   target_compile_features(ProcessorQualityTests PRIVATE cxx_std_20)
   target_compile_definitions(ProcessorQualityTests PRIVATE JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0)
@@ -90,7 +120,7 @@ if (BUILD_TESTING)
     Tests/AudioQuality/OfflineRendererTests.cpp
     Tests/AudioQuality/OfflineRenderer.cpp
     Source/PluginProcessor.cpp Source/PluginEditor.cpp
-    Source/DSP/WavetableOscillator.cpp Source/DSP/SynthVoice.cpp
+    Source/DSP/WavetableOscillator.cpp Source/DSP/WavetableImporter.cpp Source/DSP/OutputSafety.cpp Source/DSP/SynthVoice.cpp
     Source/DSP/UnisonBank.cpp)
   target_compile_features(OfflineRendererTests PRIVATE cxx_std_20)
   target_compile_definitions(OfflineRendererTests PRIVATE JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0)
@@ -119,7 +149,7 @@ if (BUILD_TESTING)
     Tests/AudioQuality/GoldenComparator.cpp
     Tests/AudioQuality/OfflineRenderer.cpp
     Source/PluginProcessor.cpp Source/PluginEditor.cpp
-    Source/DSP/WavetableOscillator.cpp Source/DSP/SynthVoice.cpp
+    Source/DSP/WavetableOscillator.cpp Source/DSP/WavetableImporter.cpp Source/DSP/OutputSafety.cpp Source/DSP/SynthVoice.cpp
     Source/DSP/UnisonBank.cpp)
   target_compile_features(AudioQualityRunner PRIVATE cxx_std_20)
   target_compile_definitions(AudioQualityRunner PRIVATE JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0)
@@ -132,7 +162,7 @@ if (BUILD_TESTING)
   juce_generate_juce_header(UnisonBankTests)
   target_sources(UnisonBankTests PRIVATE
     Tests/AudioQuality/UnisonBankTests.cpp Source/DSP/UnisonBank.cpp
-    Source/DSP/WavetableOscillator.cpp)
+    Source/DSP/WavetableOscillator.cpp Source/DSP/WavetableImporter.cpp)
   target_compile_features(UnisonBankTests PRIVATE cxx_std_20)
   target_compile_definitions(UnisonBankTests PRIVATE JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0)
   target_link_libraries(UnisonBankTests PRIVATE juce::juce_audio_basics juce::juce_core juce::juce_dsp)
@@ -143,19 +173,41 @@ if (BUILD_TESTING)
   juce_generate_juce_header(WavetableTests)
   target_sources(WavetableTests PRIVATE
     Tests/WavetableTests.cpp
-    Source/DSP/WavetableOscillator.cpp)
+    Source/DSP/WavetableOscillator.cpp Source/DSP/WavetableImporter.cpp)
   target_compile_features(WavetableTests PRIVATE cxx_std_20)
   target_compile_definitions(WavetableTests PRIVATE JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0)
   target_link_libraries(WavetableTests PRIVATE juce::juce_audio_basics juce::juce_core juce::juce_dsp)
   set_target_properties(WavetableTests PROPERTIES MACOSX_DEPLOYMENT_TARGET "12.0")
   add_test(NAME WavetableDSP COMMAND WavetableTests)
 
+  juce_add_console_app(WavetableImporterTests PRODUCT_NAME "Wavetable Importer Tests")
+  juce_generate_juce_header(WavetableImporterTests)
+  target_sources(WavetableImporterTests PRIVATE
+    Tests/AudioQuality/WavetableImporterTests.cpp
+    Source/DSP/WavetableOscillator.cpp Source/DSP/WavetableImporter.cpp)
+  target_compile_features(WavetableImporterTests PRIVATE cxx_std_20)
+  target_compile_definitions(WavetableImporterTests PRIVATE JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0)
+  target_link_libraries(WavetableImporterTests PRIVATE
+    juce::juce_audio_basics juce::juce_core juce::juce_dsp)
+  set_target_properties(WavetableImporterTests PROPERTIES MACOSX_DEPLOYMENT_TARGET "12.0")
+  add_test(NAME WavetableImporter COMMAND WavetableImporterTests)
+
+  juce_add_console_app(OutputSafetyTests PRODUCT_NAME "Output Safety Tests")
+  juce_generate_juce_header(OutputSafetyTests)
+  target_sources(OutputSafetyTests PRIVATE
+    Tests/AudioQuality/OutputSafetyTests.cpp Source/DSP/OutputSafety.cpp)
+  target_compile_features(OutputSafetyTests PRIVATE cxx_std_20)
+  target_compile_definitions(OutputSafetyTests PRIVATE JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0)
+  target_link_libraries(OutputSafetyTests PRIVATE juce::juce_audio_basics juce::juce_core)
+  set_target_properties(OutputSafetyTests PROPERTIES MACOSX_DEPLOYMENT_TARGET "12.0")
+  add_test(NAME OutputSafety COMMAND OutputSafetyTests)
+
   juce_add_console_app(ProcessorSmokeTests PRODUCT_NAME "Processor Smoke Tests")
   juce_generate_juce_header(ProcessorSmokeTests)
   target_sources(ProcessorSmokeTests PRIVATE
     Tests/ProcessorSmokeTests.cpp
     Source/PluginProcessor.cpp Source/PluginEditor.cpp
-    Source/DSP/WavetableOscillator.cpp Source/DSP/SynthVoice.cpp
+    Source/DSP/WavetableOscillator.cpp Source/DSP/WavetableImporter.cpp Source/DSP/OutputSafety.cpp Source/DSP/SynthVoice.cpp
     Source/DSP/UnisonBank.cpp)
   target_compile_features(ProcessorSmokeTests PRIVATE cxx_std_20)
   target_compile_definitions(ProcessorSmokeTests PRIVATE JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0)

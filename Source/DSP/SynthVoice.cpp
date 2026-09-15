@@ -165,12 +165,18 @@ void SynthVoice::renderNextBlock (juce::AudioBuffer<float>& output, int start, i
     const bool lfo2Active = lfo2DepthValue > 0.0001f;
     const float lfo1Increment = lfo1Rate->load() / (float) sampleRate;
     const float lfo2Increment = lfo2Rate->load() / (float) sampleRate;
+    const float driftIncrement = driftRateHz / (float) sampleRate;
+    const float osc1SpreadValue = -osc1Spread->load();
+    const float osc2SpreadValue = osc2Spread->load();
+    const float osc3SpreadValue = ((midiNote & 1) == 0 ? -1.0f : 1.0f) * osc3Spread->load();
+    const float osc1DetuneScaled = osc1Detune * keyTrackScale;
+    const float osc2DetuneScaled = osc2Detune * keyTrackScale;
+    const float osc3DetuneScaled = osc3Detune * keyTrackScale;
     auto* preSatLeft = preSaturationBuffer.getWritePointer (0);
     auto* preSatRight = preSaturationBuffer.getWritePointer (1);
     for (int i = 0; i < count; ++i)
     {
         // 작업 3: Drift LFO advance
-        const float driftIncrement = driftRateHz / (float) sampleRate;
         driftPhase += driftIncrement;
         driftPhase -= std::floor (driftPhase);
         const float driftMod = driftDepthValue > 0.0f ? std::sin (juce::MathConstants<float>::twoPi * driftPhase) * driftDepthValue * 0.02f : 0.0f;  // ±2%
@@ -224,14 +230,14 @@ void SynthVoice::renderNextBlock (juce::AudioBuffer<float>& output, int start, i
         float osc3Left = 0.0f, osc3Right = 0.0f;
         const auto positionOffset = wavetableMod;
         osc1Bank.processStereo (*table, osc1Count, noteHz * osc1Ratio * pitchRatio,
-                                wavetable1 + positionOffset, osc1Detune * keyTrackScale,
-                                -osc1Spread->load(), osc1Left, osc1Right);
+                                wavetable1 + positionOffset, osc1DetuneScaled,
+                                osc1SpreadValue, osc1Left, osc1Right);
         osc2Bank.processStereo (*table, osc2Count, noteHz * osc2Ratio * pitchRatio,
-                                wavetable2 + positionOffset, osc2Detune * keyTrackScale,
-                                osc2Spread->load(), osc2Left, osc2Right);
+                                wavetable2 + positionOffset, osc2DetuneScaled,
+                                osc2SpreadValue, osc2Left, osc2Right);
         osc3Bank.processStereo (*table, osc3Count, noteHz * osc3Ratio * pitchRatio,
-                                wavetable3 + positionOffset, osc3Detune * keyTrackScale,
-                                ((midiNote & 1) == 0 ? -1.0f : 1.0f) * osc3Spread->load(), osc3Left, osc3Right);
+                                wavetable3 + positionOffset, osc3DetuneScaled,
+                                osc3SpreadValue, osc3Left, osc3Right);
         float left = (osc1Left * l1 + osc2Left * l2 + osc3Left * l3) / 3.0f * inGain;
         float right = (osc1Right * l1 + osc2Right * l2 + osc3Right * l3) / 3.0f * inGain;
         left = filter.processSample (0, left);
@@ -255,14 +261,21 @@ void SynthVoice::renderNextBlock (juce::AudioBuffer<float>& output, int start, i
     const float satMakeup = 1.0f - saturation * 0.18f;
     juce::dsp::AudioBlock<float> preSatBlock (preSaturationBuffer);
     auto preSatSub = preSatBlock.getSubBlock (0, (size_t) count);
-    auto oversampledBlock = saturationOversampling.processSamplesUp (preSatSub);
-    for (size_t ch = 0; ch < oversampledBlock.getNumChannels(); ++ch)
+    // Oversampling and tanh only matter once drive is actually applied, but
+    // a block inside a saturation ramp keeps the legacy path so smoothed
+    // attacks receive the same oversampler filtering as before.
+    const bool saturationBypassed = saturation <= 0.005f && ! smoothedSaturation.isSmoothing();
+    if (! saturationBypassed)
     {
-        auto* channelData = oversampledBlock.getChannelPointer (ch);
-        for (size_t n = 0; n < oversampledBlock.getNumSamples(); ++n)
-            channelData[n] = std::tanh (channelData[n]);
+        auto oversampledBlock = saturationOversampling.processSamplesUp (preSatSub);
+        for (size_t ch = 0; ch < oversampledBlock.getNumChannels(); ++ch)
+        {
+            auto* channelData = oversampledBlock.getChannelPointer (ch);
+            for (size_t n = 0; n < oversampledBlock.getNumSamples(); ++n)
+                channelData[n] = std::tanh (channelData[n]);
+        }
+        saturationOversampling.processSamplesDown (preSatSub);
     }
-    saturationOversampling.processSamplesDown (preSatSub);
     for (int i = 0; i < count; ++i)
     {
         out[i] += preSatLeft[i] * satMakeup * outputGainScratch[(size_t) i];

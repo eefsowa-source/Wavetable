@@ -1,4 +1,5 @@
 #include "WavetableOscillator.h"
+#include "WavetableImporter.h"
 
 WavetableData::WavetableData()
 {
@@ -16,17 +17,7 @@ WavetableData::WavetableData()
 void WavetableData::loadFromAudio (const juce::AudioBuffer<float>& source)
 {
     if (source.getNumChannels() == 0 || source.getNumSamples() == 0) return;
-    for (int frame = 0; frame < numTables; ++frame)
-        for (int i = 0; i < tableSize; ++i)
-        {
-            const bool hasMultipleFrames = source.getNumSamples() >= tableSize * numTables;
-            const auto frameStart = hasMultipleFrames ? (double) frame * (double) source.getNumSamples() / (double) numTables : 0.0;
-            const auto frameLength = hasMultipleFrames ? (double) source.getNumSamples() / (double) numTables : (double) source.getNumSamples();
-            const auto sample = (int) juce::jlimit (0, source.getNumSamples() - 1,
-                                                     (int) std::floor (frameStart + (double) i / (double) tableSize * frameLength));
-            frames[(size_t) frame][(size_t) i] = source.getSample (0, sample);
-        }
-    regenerateMips();
+    *this = WavetableImporter::import (source);
 }
 
 namespace
@@ -86,11 +77,42 @@ void WavetableData::regenerateMipsForFrame (int frameIndex)
 
 const std::array<float, WavetableData::tableSize>& WavetableData::tableForFrame (int frameIndex, float increment) const noexcept
 {
-    const float maxSafeHarmonic = increment > 0.0f ? 0.5f / increment : (float) tableSize;
+    return tableForFrameAndLevel (frameIndex, selectMipLevels (increment).detailedLevel);
+}
+
+WavetableData::MipSelection WavetableData::selectMipLevels (float increment) const noexcept
+{
+    if (increment <= 0.0f)
+        return {};
+
+    const float maxSafeHarmonic = 0.5f / increment;
+    int detailedLevel = numMipLevels - 1;
     for (int level = 0; level < numMipLevels; ++level)
         if ((float) mipHarmonicCaps[(size_t) level] <= maxSafeHarmonic)
-            return mipFrames[(size_t) level][(size_t) frameIndex];
-    return mipFrames[(size_t) (numMipLevels - 1)][(size_t) frameIndex];
+        {
+            detailedLevel = level;
+            break;
+        }
+
+    if (detailedLevel == numMipLevels - 1)
+        return { detailedLevel, detailedLevel, 0.0f };
+
+    constexpr float transitionOctaves = 0.35f;
+    const auto detailedCap = (float) mipHarmonicCaps[(size_t) detailedLevel];
+    const auto transitionStart = detailedCap * std::exp2 (transitionOctaves);
+    const auto linearMix = juce::jlimit (0.0f, 1.0f,
+                                         std::log2 (transitionStart / maxSafeHarmonic)
+                                             / transitionOctaves);
+    const auto smoothMix = linearMix * linearMix * (3.0f - 2.0f * linearMix);
+    return { detailedLevel, detailedLevel + 1, smoothMix };
+}
+
+const std::array<float, WavetableData::tableSize>&
+WavetableData::tableForFrameAndLevel (int frameIndex, int level) const noexcept
+{
+    const auto safeFrame = juce::jlimit (0, numTables - 1, frameIndex);
+    const auto safeLevel = juce::jlimit (0, numMipLevels - 1, level);
+    return mipFrames[(size_t) safeLevel][(size_t) safeFrame];
 }
 
 void WavetableOscillator::prepare (double sr) { sampleRate = sr; }
@@ -101,12 +123,29 @@ void WavetableOscillator::setFrequency (float hz) noexcept
 
 float WavetableOscillator::process (const WavetableData& table) noexcept
 {
+    if (increment >= 0.5f)
+    {
+        phase += increment;
+        phase -= std::floor (phase);
+        return 0.0f;
+    }
+
     const float frame = position * (float) (WavetableData::numTables - 1);
     const int a = (int) frame;
     const int b = juce::jmin (a + 1, WavetableData::numTables - 1);
     const float frac = frame - (float) a;
-    const auto& tableA = table.tableForFrame (a, increment);
-    const auto& tableB = table.tableForFrame (b, increment);
+    // Mip selection depends only on the increment, so with static pitch it is
+    // effectively a per-block computation; pitch modulation simply recomputes.
+    if (increment != mipSelectionIncrement)
+    {
+        mipSelection = table.selectMipLevels (increment);
+        mipSelectionIncrement = increment;
+    }
+    const auto& mip = mipSelection;
+    const auto& detailedA = table.tableForFrameAndLevel (a, mip.detailedLevel);
+    const auto& detailedB = table.tableForFrameAndLevel (b, mip.detailedLevel);
+    const auto& saferA = table.tableForFrameAndLevel (a, mip.saferLevel);
+    const auto& saferB = table.tableForFrameAndLevel (b, mip.saferLevel);
     const float index = phase * (float) WavetableData::tableSize;
     const int i0 = ((int) index) & (WavetableData::tableSize - 1);
     const int i1 = (i0 + 1) & (WavetableData::tableSize - 1);
@@ -114,13 +153,18 @@ float WavetableOscillator::process (const WavetableData& table) noexcept
     const int i3 = (i0 + 3) & (WavetableData::tableSize - 1);
     const float t = index - std::floor (index);
     
-    // Use Hermite 4-point interpolation instead of linear
-    const float va = hermiteInterpolate (tableA[(size_t) i0], tableA[(size_t) i1],
-                                         tableA[(size_t) i2], tableA[(size_t) i3], t);
-    const float vb = hermiteInterpolate (tableB[(size_t) i0], tableB[(size_t) i1],
-                                         tableB[(size_t) i2], tableB[(size_t) i3], t);
+    const auto sampleTable = [=] (const auto& samples) noexcept
+    {
+        return hermiteInterpolate (samples[(size_t) i0], samples[(size_t) i1],
+                                   samples[(size_t) i2], samples[(size_t) i3], t);
+    };
+    const float detailedFrameA = sampleTable (detailedA);
+    const float detailedFrameB = sampleTable (detailedB);
+    const float saferFrameA = mip.saferMix > 0.0f ? sampleTable (saferA) : detailedFrameA;
+    const float saferFrameB = mip.saferMix > 0.0f ? sampleTable (saferB) : detailedFrameB;
+    const float va = juce::jmap (mip.saferMix, detailedFrameA, saferFrameA);
+    const float vb = juce::jmap (mip.saferMix, detailedFrameB, saferFrameB);
     phase += increment;
     phase -= std::floor (phase);
     return juce::jmap (frac, va, vb);
 }
-

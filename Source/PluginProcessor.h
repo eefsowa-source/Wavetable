@@ -1,6 +1,8 @@
 #pragma once
 #include <JuceHeader.h>
 #include "DSP/SynthVoice.h"
+#include "DSP/OutputSafety.h"
+#include "EditorTypes.h"
 #include <cstdint>
 
 struct DelayMixGains
@@ -17,6 +19,7 @@ public:
 
     void prepareToPlay (double sampleRate, int samplesPerBlock) override;
     void releaseResources() override;
+    void reset() override;
     bool isBusesLayoutSupported (const BusesLayout& layouts) const override;
     void processBlock (juce::AudioBuffer<float>&, juce::MidiBuffer&) override;
     juce::AudioProcessorEditor* createEditor() override;
@@ -44,6 +47,8 @@ public:
     static const juce::StringArray& getFactoryPresetNames();
     void applyFactoryPreset (int index);
     void beginMidiLearn (int targetIndex) noexcept;
+    int getUiType() const noexcept { return uiType.load (std::memory_order_acquire); }
+    void setUiType (int type) noexcept;
     static DelayMixGains calculateDelayMixGains (float mix) noexcept;
 
 private:
@@ -64,6 +69,7 @@ private:
     juce::AudioBuffer<float> delayBuffer;
     int delayWritePosition = 0;
     juce::dsp::Reverb reverb;
+    OutputSafety outputSafety;
     juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> smoothedDelayTime;
     juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> smoothedDelayFeedback;
     juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> smoothedDelayMix;
@@ -77,6 +83,8 @@ private:
     juce::MidiBuffer arpeggiatedMidi;
     std::array<std::atomic<int>, 128> midiCCAssignments;
     std::atomic<int> midiLearnTarget { -1 };
+    // Presentation-only editor selection; never read from the audio thread.
+    std::atomic<int> uiType { 0 };
     double currentSampleRate = 44100.0;
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (HybridWavetableAudioProcessor)
 };

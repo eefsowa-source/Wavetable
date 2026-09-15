@@ -43,6 +43,31 @@ float maximumDifference (const juce::AudioBuffer<float>& a, const juce::AudioBuf
             result = juce::jmax (result, std::abs (a.getSample (channel, sample) - b.getSample (channel, sample)));
     return result;
 }
+
+juce::AudioBuffer<float> renderWithSaturation (float saturation)
+{
+    audioquality::AudioQualityFixture fixture;
+    fixture.id = "saturation-path";
+    fixture.durationSeconds = 0.25;
+    fixture.tailSeconds = 0.05;
+    fixture.randomSeed = 400u;
+    fixture.midi = { { juce::MidiMessage::noteOn (1, 60, 0.8f), 0 },
+                     { juce::MidiMessage::noteOff (1, 60), 9000 } };
+    return audioquality::OfflineRenderer::render (fixture, [=] (auto& processor)
+    {
+        const auto set = [&] (const char* id, float value)
+        {
+            if (auto* parameter = processor.parameters.getParameter (id))
+                parameter->setValueNotifyingHost (parameter->convertTo0to1 (value));
+        };
+        set ("osc1Level", 1.0f);
+        set ("osc2Level", 0.0f);
+        set ("osc3Level", 0.0f);
+        set ("osc1Unison", 1.0f);
+        set ("saturation", saturation);
+        set ("output", 0.0f);
+    });
+}
 }
 
 namespace
@@ -99,6 +124,8 @@ int main()
     test.expect (maximumDifference (renderIsolatedOscillator ("osc3", "osc3Unison", 1, 300u),
                                     renderIsolatedOscillator ("osc3", "osc3Unison", 4, 300u)) > 1.0e-5f,
                  "osc3 unison parameter changes the rendered signal");
+    test.expect (maximumDifference (renderWithSaturation (0.0f), renderWithSaturation (0.9f)) > 1.0e-4f,
+                 "saturation drive changes the rendered signal (bypass path stays active)");
 
     const auto dry = HybridWavetableAudioProcessor::calculateDelayMixGains (0.0f);
     const auto half = HybridWavetableAudioProcessor::calculateDelayMixGains (0.5f);

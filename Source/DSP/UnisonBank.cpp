@@ -11,8 +11,14 @@ std::array<UnisonLane, 8> makeUnisonLayout (int count,
     for (int index = 0; index < active; ++index)
     {
         const auto position = active == 1 ? 0.0f : 2.0f * (float) index / (float) (active - 1) - 1.0f;
+        // A single lane keeps the pure layout centred, while the oscillator's
+        // legacy spread control still provides its intentional stereo image.
+        const auto pan = juce::jlimit (-1.0f, 1.0f, active == 1 ? spread : position * spread);
         lanes[(size_t) index] = { position * detune, position * spread,
-                                  1.0f / std::sqrt ((float) active) };
+                                  1.0f / std::sqrt ((float) active),
+                                  std::exp2 (position * detune * 0.01f / 12.0f),
+                                  std::sqrt (0.5f * (1.0f - pan)),
+                                  std::sqrt (0.5f * (1.0f + pan)) };
     }
     return lanes;
 }
@@ -43,20 +49,25 @@ void OscillatorUnisonBank::processStereo (const WavetableData& table, int count,
     left = 0.0f;
     right = 0.0f;
     const auto active = juce::jlimit (1, 8, count);
-    const auto lanes = makeUnisonLayout (active, detuneCents, stereoSpread);
+    const auto detune = juce::jmax (0.0f, detuneCents);
+    const auto spread = juce::jlimit (0.0f, 1.0f, stereoSpread);
+    // Detune/spread change at block rate at most; rebuild the lane layout only
+    // when one of them actually moved instead of on every audio sample.
+    if (count != cachedCount || detune != cachedDetuneCents || spread != cachedStereoSpread)
+    {
+        cachedLanes = makeUnisonLayout (active, detune, spread);
+        cachedCount = count;
+        cachedDetuneCents = detune;
+        cachedStereoSpread = spread;
+    }
     for (int index = 0; index < active; ++index)
     {
-        const auto& lane = lanes[(size_t) index];
+        const auto& lane = cachedLanes[(size_t) index];
         auto& oscillator = oscillators[(size_t) index];
-        oscillator.setFrequency (frequency * std::exp2 (lane.cents * 0.01f / 12.0f));
+        oscillator.setFrequency (frequency * lane.frequencyRatio);
         oscillator.setPosition (position);
         const auto value = oscillator.process (table) * lane.gain;
-        // A single lane keeps the pure layout centred, while the oscillator's
-        // legacy spread control still provides its intentional stereo image.
-        const auto pan = juce::jlimit (-1.0f, 1.0f, active == 1 ? stereoSpread : lane.pan);
-        const auto leftGain = std::sqrt (0.5f * (1.0f - pan));
-        const auto rightGain = std::sqrt (0.5f * (1.0f + pan));
-        left += value * leftGain;
-        right += value * rightGain;
+        left += value * lane.leftGain;
+        right += value * lane.rightGain;
     }
 }

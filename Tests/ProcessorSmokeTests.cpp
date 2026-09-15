@@ -1,7 +1,9 @@
 #include "../Source/PluginProcessor.h"
+#include "../Source/EditorTypes.h"
 #include <cmath>
 #include <iostream>
 #include <limits>
+#include <array>
 
 static bool check (bool condition, const char* message)
 {
@@ -131,17 +133,17 @@ int main()
 
     // Spread must create a real stereo source before master width is applied.
     // Keep only Osc 1 audible so its left pan is easy to observe.
-    HybridWavetableAudioProcessor stereoProcessor;
-    stereoProcessor.prepareToPlay (48000.0, 512);
-    setPlainParameter (stereoProcessor, "osc1Level", 1.0f);
-    setPlainParameter (stereoProcessor, "osc2Level", 0.0f);
-    setPlainParameter (stereoProcessor, "osc3Level", 0.0f);
-    setPlainParameter (stereoProcessor, "osc1Spread", 1.0f);
-    setPlainParameter (stereoProcessor, "masterWidth", 1.0f);
+    auto stereoProcessor = std::make_unique<HybridWavetableAudioProcessor>();
+    stereoProcessor->prepareToPlay (48000.0, 512);
+    setPlainParameter (*stereoProcessor, "osc1Level", 1.0f);
+    setPlainParameter (*stereoProcessor, "osc2Level", 0.0f);
+    setPlainParameter (*stereoProcessor, "osc3Level", 0.0f);
+    setPlainParameter (*stereoProcessor, "osc1Spread", 1.0f);
+    setPlainParameter (*stereoProcessor, "masterWidth", 1.0f);
     juce::AudioBuffer<float> stereoBuffer (2, 512);
     juce::MidiBuffer stereoMidi;
     stereoMidi.addEvent (juce::MidiMessage::noteOn (1, 60, (juce::uint8) 100), 0);
-    stereoProcessor.processBlock (stereoBuffer, stereoMidi);
+    stereoProcessor->processBlock (stereoBuffer, stereoMidi);
     float stereoDifference = 0.0f;
     for (int sample = 0; sample < stereoBuffer.getNumSamples(); ++sample)
         stereoDifference = juce::jmax (stereoDifference,
@@ -150,17 +152,17 @@ int main()
     ok &= check (stereoDifference > 1.0e-4f,
                  "oscillator spread produces a stereo voice image");
 
-    HybridWavetableAudioProcessor monoProcessor;
-    monoProcessor.prepareToPlay (48000.0, 512);
-    setPlainParameter (monoProcessor, "osc1Level", 1.0f);
-    setPlainParameter (monoProcessor, "osc2Level", 0.0f);
-    setPlainParameter (monoProcessor, "osc3Level", 0.0f);
-    setPlainParameter (monoProcessor, "osc1Spread", 1.0f);
-    setPlainParameter (monoProcessor, "masterWidth", 0.0f);
+    auto monoProcessor = std::make_unique<HybridWavetableAudioProcessor>();
+    monoProcessor->prepareToPlay (48000.0, 512);
+    setPlainParameter (*monoProcessor, "osc1Level", 1.0f);
+    setPlainParameter (*monoProcessor, "osc2Level", 0.0f);
+    setPlainParameter (*monoProcessor, "osc3Level", 0.0f);
+    setPlainParameter (*monoProcessor, "osc1Spread", 1.0f);
+    setPlainParameter (*monoProcessor, "masterWidth", 0.0f);
     juce::AudioBuffer<float> monoBuffer (2, 512);
     juce::MidiBuffer monoMidi;
     monoMidi.addEvent (juce::MidiMessage::noteOn (1, 60, (juce::uint8) 100), 0);
-    monoProcessor.processBlock (monoBuffer, monoMidi);
+    monoProcessor->processBlock (monoBuffer, monoMidi);
     float monoDifference = 0.0f;
     for (int sample = 0; sample < monoBuffer.getNumSamples(); ++sample)
         monoDifference = juce::jmax (monoDifference,
@@ -169,15 +171,56 @@ int main()
     ok &= check (monoDifference < 1.0e-5f,
                  "master width zero collapses the voice to mono");
 
-    HybridWavetableAudioProcessor gatedArpProcessor;
-    gatedArpProcessor.prepareToPlay (48000.0, 2048);
-    setPlainParameter (gatedArpProcessor, "arpEnabled", 1.0f);
-    setPlainParameter (gatedArpProcessor, "arpRate", 24.0f);
-    setPlainParameter (gatedArpProcessor, "arpGate", 0.05f);
+    // A pathological imported table can contain a strong constant component.
+    // The final output stage must remove it without relying on the importer or
+    // oscillator/filter configuration to have done so earlier.
+    auto dcProcessor = std::make_unique<HybridWavetableAudioProcessor> (0x4443424cu);
+    dcProcessor->prepareToPlay (48000.0, 128);
+    for (auto& frame : dcProcessor->wavetable.frames)
+        frame.fill (0.25f);
+    dcProcessor->wavetable.regenerateMips();
+    dcProcessor->publishWavetable();
+    setPlainParameter (*dcProcessor, "osc1Level", 1.0f);
+    setPlainParameter (*dcProcessor, "osc2Level", 0.0f);
+    setPlainParameter (*dcProcessor, "osc3Level", 0.0f);
+    setPlainParameter (*dcProcessor, "osc1Unison", 1.0f);
+    setPlainParameter (*dcProcessor, "cutoff", 20000.0f);
+    setPlainParameter (*dcProcessor, "filterEnvAmount", 0.0f);
+    setPlainParameter (*dcProcessor, "ampAttack", 0.001f);
+    setPlainParameter (*dcProcessor, "ampDecay", 0.001f);
+    setPlainParameter (*dcProcessor, "ampSustain", 1.0f);
+    setPlainParameter (*dcProcessor, "saturation", 0.0f);
+    setPlainParameter (*dcProcessor, "filterDrive", 0.0f);
+    setPlainParameter (*dcProcessor, "output", 0.0f);
+    double dcSum = 0.0;
+    int dcSamples = 0;
+    for (int blockIndex = 0; blockIndex < 375; ++blockIndex)
+    {
+        juce::AudioBuffer<float> dcBlock (2, 128);
+        juce::MidiBuffer dcMidi;
+        if (blockIndex == 0)
+            dcMidi.addEvent (juce::MidiMessage::noteOn (1, 60, 1.0f), 0);
+        dcProcessor->processBlock (dcBlock, dcMidi);
+        if (blockIndex >= 187)
+            for (int sample = 0; sample < dcBlock.getNumSamples(); ++sample)
+            {
+                dcSum += dcBlock.getSample (0, sample);
+                ++dcSamples;
+            }
+    }
+    const auto residualDc = std::abs (dcSum / (double) juce::jmax (1, dcSamples));
+    ok &= check (residualDc < 1.0e-4,
+                 "output safety removes sustained DC below -80 dBFS");
+
+    auto gatedArpProcessor = std::make_unique<HybridWavetableAudioProcessor>();
+    gatedArpProcessor->prepareToPlay (48000.0, 2048);
+    setPlainParameter (*gatedArpProcessor, "arpEnabled", 1.0f);
+    setPlainParameter (*gatedArpProcessor, "arpRate", 24.0f);
+    setPlainParameter (*gatedArpProcessor, "arpGate", 0.05f);
     juce::AudioBuffer<float> arpGateBuffer (2, 2048);
     juce::MidiBuffer arpGateMidi;
     arpGateMidi.addEvent (juce::MidiMessage::noteOn (1, 60, (juce::uint8) 100), 0);
-    gatedArpProcessor.processBlock (arpGateBuffer, arpGateMidi);
+    gatedArpProcessor->processBlock (arpGateBuffer, arpGateMidi);
     bool sawGatedNoteOff = false;
     for (const auto metadata : arpGateMidi)
     {
@@ -188,18 +231,18 @@ int main()
     ok &= check (sawGatedNoteOff,
                  "arpeggiator gate releases a note before its next step");
 
-    HybridWavetableAudioProcessor disableArpProcessor;
-    disableArpProcessor.prepareToPlay (48000.0, 64);
-    setPlainParameter (disableArpProcessor, "arpEnabled", 1.0f);
-    setPlainParameter (disableArpProcessor, "arpRate", 0.5f);
-    setPlainParameter (disableArpProcessor, "arpGate", 1.0f);
+    auto disableArpProcessor = std::make_unique<HybridWavetableAudioProcessor>();
+    disableArpProcessor->prepareToPlay (48000.0, 64);
+    setPlainParameter (*disableArpProcessor, "arpEnabled", 1.0f);
+    setPlainParameter (*disableArpProcessor, "arpRate", 0.5f);
+    setPlainParameter (*disableArpProcessor, "arpGate", 1.0f);
     juce::AudioBuffer<float> arpDisableBuffer (2, 64);
     juce::MidiBuffer arpEnableMidi;
     arpEnableMidi.addEvent (juce::MidiMessage::noteOn (1, 60, (juce::uint8) 100), 0);
-    disableArpProcessor.processBlock (arpDisableBuffer, arpEnableMidi);
-    setPlainParameter (disableArpProcessor, "arpEnabled", 0.0f);
+    disableArpProcessor->processBlock (arpDisableBuffer, arpEnableMidi);
+    setPlainParameter (*disableArpProcessor, "arpEnabled", 0.0f);
     juce::MidiBuffer arpDisableMidi;
-    disableArpProcessor.processBlock (arpDisableBuffer, arpDisableMidi);
+    disableArpProcessor->processBlock (arpDisableBuffer, arpDisableMidi);
     bool sawDisableNoteOff = false;
     for (const auto metadata : arpDisableMidi)
     {
@@ -318,32 +361,32 @@ int main()
     ok &= check (fixtureLoaded, "version-1 state fixture is readable");
     if (fixtureLoaded)
     {
-        HybridWavetableAudioProcessor legacyProcessor (0x51a7e001u);
-        legacyProcessor.prepareToPlay (48000.0, 256);
-        legacyProcessor.setStateInformation (fixtureState.getData(), (int) fixtureState.getSize());
-        ok &= check (std::abs (legacyProcessor.parameters.getRawParameterValue ("osc1Pos")->load() - 0.5f) < 0.001f,
+        auto legacyProcessor = std::make_unique<HybridWavetableAudioProcessor> (0x51a7e001u);
+        legacyProcessor->prepareToPlay (48000.0, 256);
+        legacyProcessor->setStateInformation (fixtureState.getData(), (int) fixtureState.getSize());
+        ok &= check (std::abs (legacyProcessor->parameters.getRawParameterValue ("osc1Pos")->load() - 0.5f) < 0.001f,
                      "fixture preserves legacy oscillator position");
-        ok &= check (std::abs (legacyProcessor.parameters.getRawParameterValue ("osc2Pos")->load() - 0.22f) < 0.001f,
+        ok &= check (std::abs (legacyProcessor->parameters.getRawParameterValue ("osc2Pos")->load() - 0.22f) < 0.001f,
                      "fixture preserves second legacy oscillator position");
-        ok &= check (std::abs (legacyProcessor.parameters.getRawParameterValue ("osc3Pos")->load() - 0.73f) < 0.001f,
+        ok &= check (std::abs (legacyProcessor->parameters.getRawParameterValue ("osc3Pos")->load() - 0.73f) < 0.001f,
                      "fixture preserves third legacy oscillator position");
 
         juce::MemoryBlock upgradedState;
-        legacyProcessor.getStateInformation (upgradedState);
+        legacyProcessor->getStateInformation (upgradedState);
         std::unique_ptr<juce::XmlElement> upgradedXml (HybridWavetableAudioProcessor::getXmlFromBinary (upgradedState.getData(),
                                                                                                            (int) upgradedState.getSize()));
         ok &= check (upgradedXml != nullptr && upgradedXml->getIntAttribute ("stateSchemaVersion", 0) == 2,
                      "legacy fixture saves as schema version 2");
 
-        HybridWavetableAudioProcessor restoredProcessor (0x51a7e001u);
-        restoredProcessor.prepareToPlay (48000.0, 256);
-        restoredProcessor.setStateInformation (upgradedState.getData(), (int) upgradedState.getSize());
+        auto restoredProcessor = std::make_unique<HybridWavetableAudioProcessor> (0x51a7e001u);
+        restoredProcessor->prepareToPlay (48000.0, 256);
+        restoredProcessor->setStateInformation (upgradedState.getData(), (int) upgradedState.getSize());
         juce::AudioBuffer<float> legacyRender (2, 256), restoredRender (2, 256);
         juce::MidiBuffer legacyMidi, restoredMidi;
         legacyMidi.addEvent (juce::MidiMessage::noteOn (1, 60, (juce::uint8) 100), 0);
         restoredMidi.addEvent (juce::MidiMessage::noteOn (1, 60, (juce::uint8) 100), 0);
-        legacyProcessor.processBlock (legacyRender, legacyMidi);
-        restoredProcessor.processBlock (restoredRender, restoredMidi);
+        legacyProcessor->processBlock (legacyRender, legacyMidi);
+        restoredProcessor->processBlock (restoredRender, restoredMidi);
         ok &= check (maximumAudioDifference (legacyRender, restoredRender) == 0.0f,
                      "version-1 to version-2 render is sample-identical with the same seed");
     }
@@ -377,6 +420,50 @@ int main()
     processor.processBlock (denseBuffer, release);
     for (int i = 0; i < denseBuffer.getNumSamples(); ++i)
         ok &= check (std::isfinite (denseBuffer.getSample (0, i)), "voice release output remains finite");
+
+    // UI type coverage: three banks of 30 with deterministic mapping and
+    // session save/restore. Layout-bank types keep the default skin.
+    ok &= check (seoului::typeCount() == 90, "ninety UI types are defined");
+    ok &= check (seoului::clampType (-7) == 0 && seoului::clampType (95) == 89,
+                 "UI type selection clamps into the valid range");
+    ok &= check (seoului::skinIndexForType (35) == 0 && seoului::layoutIndexForType (35) == 5,
+                 "layout bank keeps the default skin with its own layout");
+    std::array<bool, 30> skinUsed {}, layoutUsed {};
+    for (const auto& pairing : seoului::combined())
+    {
+        ok &= check (! skinUsed[(size_t) pairing.skin], "combined bank uses each skin once");
+        ok &= check (! layoutUsed[(size_t) pairing.layout], "combined bank uses each layout once");
+        skinUsed[(size_t) pairing.skin] = true;
+        layoutUsed[(size_t) pairing.layout] = true;
+    }
+    for (int i = 0; i < 30; ++i)
+    {
+        ok &= check (skinUsed[(size_t) i], "combined bank covers every skin");
+        ok &= check (layoutUsed[(size_t) i], "combined bank covers every layout");
+    }
+    processor.setUiType (47);
+    juce::MemoryBlock uiTypeState;
+    processor.getStateInformation (uiTypeState);
+    std::unique_ptr<juce::XmlElement> uiTypeXml (HybridWavetableAudioProcessor::getXmlFromBinary (uiTypeState.getData(),
+                                                                                                 (int) uiTypeState.getSize()));
+    ok &= check (uiTypeXml != nullptr && uiTypeXml->getIntAttribute ("uiType", -1) == 47,
+                 "state saves the selected UI type");
+    processor.setUiType (0);
+    processor.setStateInformation (uiTypeState.getData(), (int) uiTypeState.getSize());
+    ok &= check (processor.getUiType() == 47, "state restores the selected UI type");
+    if (uiTypeXml != nullptr)
+    {
+        uiTypeXml->setAttribute ("uiType", 500);
+        juce::MemoryBlock hostileState;
+        HybridWavetableAudioProcessor::copyXmlToBinary (*uiTypeXml, hostileState);
+        processor.setStateInformation (hostileState.getData(), (int) hostileState.getSize());
+        ok &= check (processor.getUiType() == 89, "out-of-range UI type clamps on restore");
+        uiTypeXml->removeAttribute ("uiType");
+        juce::MemoryBlock legacyUiState;
+        HybridWavetableAudioProcessor::copyXmlToBinary (*uiTypeXml, legacyUiState);
+        processor.setStateInformation (legacyUiState.getData(), (int) legacyUiState.getSize());
+        ok &= check (processor.getUiType() == 0, "states without a UI type default to type 0");
+    }
 
     processor.releaseResources();
     std::cout << (ok ? "Processor smoke tests passed\n" : "Processor smoke tests failed\n");

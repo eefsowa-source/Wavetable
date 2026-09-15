@@ -176,6 +176,7 @@ void HybridWavetableAudioProcessor::prepareToPlay (double sr, int block)
     delayWritePosition = 0;
     reverb.prepare ({ sr, (juce::uint32) juce::jmax (1, block), 2 });
     reverb.reset();
+    outputSafety.prepare (sr);
     arpeggiatedMidi.ensureSize (2048);
     const float rampSeconds = 0.05f;
     const auto initialiseEffectSmoother = [this, sr, rampSeconds] (auto& smoother, const char* id, float fallback)
@@ -192,6 +193,10 @@ void HybridWavetableAudioProcessor::prepareToPlay (double sr, int block)
     effectSmoothersNeedInitialisation = true;
 }
 void HybridWavetableAudioProcessor::releaseResources() {}
+void HybridWavetableAudioProcessor::reset()
+{
+    outputSafety.reset();
+}
 bool HybridWavetableAudioProcessor::isBusesLayoutSupported (const BusesLayout& l) const
 { return l.getMainOutputChannelSet() == juce::AudioChannelSet::mono() || l.getMainOutputChannelSet() == juce::AudioChannelSet::stereo(); }
 void HybridWavetableAudioProcessor::processBlock (juce::AudioBuffer<float>& b, juce::MidiBuffer& m)
@@ -252,6 +257,7 @@ void HybridWavetableAudioProcessor::processBlock (juce::AudioBuffer<float>& b, j
         }
     }
     processEffects (b);
+    outputSafety.process (b);
 }
 
 int HybridWavetableAudioProcessor::acquireWavetableForAudio() noexcept
@@ -447,6 +453,7 @@ void HybridWavetableAudioProcessor::getStateInformation (juce::MemoryBlock& d)
     auto state = parameters.copyState();
     std::unique_ptr<juce::XmlElement> xml (state.createXml());
     xml->setAttribute ("stateSchemaVersion", 2);
+    xml->setAttribute ("uiType", getUiType());
 
     juce::MemoryOutputStream tableData;
     tableData.writeInt (wavetableStateVersion);
@@ -516,6 +523,10 @@ void HybridWavetableAudioProcessor::setStateInformation (const void* data, int s
     }
     parameters.replaceState (parameterState);
 
+    // The editor type is presentation-only state carried on the root element.
+    // Clamping keeps hand-edited or hostile sessions inside the 90-type range.
+    setUiType (xml->getIntAttribute ("uiType", 0));
+
     if (const auto* tableElement = xml->getChildByName ("WAVETABLE"))
     {
         juce::MemoryBlock tableData;
@@ -556,17 +567,29 @@ void HybridWavetableAudioProcessor::loadAudioFile (const juce::File& file)
     if (r == nullptr || r->lengthInSamples <= 0 || r->numChannels == 0)
         return;
 
-    // Bound import to the complete 16-frame table. Sampling from the reader
-    // keeps memory fixed even for long source files while preserving morphing.
+    // Read one bounded, contiguous source region per frame. Long files use a
+    // centred region from each sixteenth so the bank retains movement across
+    // the file without allocating for the complete recording.
     constexpr int importCapacity = WavetableData::tableSize * WavetableData::numTables;
-    const int importSamples = r->lengthInSamples >= importCapacity ? importCapacity : WavetableData::tableSize;
+    constexpr int maximumSourceSamplesPerFrame = WavetableData::tableSize * 32;
+    const bool hasMultipleFrames = r->lengthInSamples >= importCapacity;
+    const auto sourceSegmentLength = hasMultipleFrames
+                                         ? r->lengthInSamples / WavetableData::numTables
+                                         : r->lengthInSamples;
+    const auto sourceSamplesPerFrame = (int) juce::jmin ((juce::int64) maximumSourceSamplesPerFrame,
+                                                         sourceSegmentLength);
+    const int importSamples = sourceSamplesPerFrame
+                              * (hasMultipleFrames ? WavetableData::numTables : 1);
     juce::AudioBuffer<float> data (1, importSamples);
     data.clear();
-    for (int i = 0; i < importSamples; ++i)
+    const int framesToRead = hasMultipleFrames ? WavetableData::numTables : 1;
+    for (int frame = 0; frame < framesToRead; ++frame)
     {
-        const auto sourcePosition = (juce::int64) ((double) i * (double) r->lengthInSamples
-                                                   / (double) importSamples);
-        r->read (&data, i, 1, juce::jmin (sourcePosition, r->lengthInSamples - 1), true, false);
+        const auto segmentStart = hasMultipleFrames ? (juce::int64) frame * sourceSegmentLength : 0;
+        const auto centredOffset = juce::jmax ((juce::int64) 0,
+                                               (sourceSegmentLength - sourceSamplesPerFrame) / 2);
+        r->read (&data, frame * sourceSamplesPerFrame, sourceSamplesPerFrame,
+                 segmentStart + centredOffset, true, false);
     }
     wavetable.loadFromAudio (data);
     publishWavetable();
@@ -638,6 +661,10 @@ void HybridWavetableAudioProcessor::applyFactoryPreset (int index)
 void HybridWavetableAudioProcessor::beginMidiLearn (int targetIndex) noexcept
 {
     midiLearnTarget.store (juce::jlimit (0, (int) midiLearnIDs.size() - 1, targetIndex), std::memory_order_release);
+}
+void HybridWavetableAudioProcessor::setUiType (int type) noexcept
+{
+    uiType.store (seoului::clampType (type), std::memory_order_release);
 }
 juce::AudioProcessorEditor* HybridWavetableAudioProcessor::createEditor() { return new HybridWavetableAudioProcessorEditor (*this); }
 juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter() { return new HybridWavetableAudioProcessor(); }

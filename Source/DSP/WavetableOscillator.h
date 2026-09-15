@@ -1,6 +1,8 @@
 #pragma once
 #include <JuceHeader.h>
 
+class WavetableImporter;
+
 struct WavetableData
 {
     static constexpr int tableSize = 2048;
@@ -10,9 +12,9 @@ struct WavetableData
     // content above Nyquist instead of aliasing. Level 0 is the least
     // aggressive (highest cap, used by low notes); the last level is the
     // most band-limited (used by the highest notes).
-    static constexpr int numMipLevels = 10;
+    static constexpr int numMipLevels = 11;
     static constexpr std::array<int, numMipLevels> mipHarmonicCaps {
-        1024, 512, 256, 128, 64, 32, 16, 8, 4, 2 };
+        1024, 512, 256, 128, 64, 32, 16, 8, 4, 2, 1 };
 
     std::array<std::array<float, tableSize>, numTables> frames{};
     std::array<std::array<std::array<float, tableSize>, numTables>, numMipLevels> mipFrames{};
@@ -30,10 +32,26 @@ struct WavetableData
     // pay for all 16 frames' FFTs on every mouse-drag event.
     void regenerateMipsForFrame (int frameIndex);
 
-    // Selects the most detailed band-limited table that still stays under
-    // Nyquist for the given oscillator increment (cycles per sample). Pure
-    // lookup - safe to call from the audio thread.
+    struct MipSelection
+    {
+        int detailedLevel = 0;
+        int saferLevel = 0;
+        float saferMix = 0.0f;
+    };
+
+    // Crossfades to the next safer mip over the final 0.35 octave before the
+    // detailed level would exceed Nyquist. Pure lookup and realtime safe.
+    MipSelection selectMipLevels (float increment) const noexcept;
+    const std::array<float, tableSize>& tableForFrameAndLevel (int frameIndex,
+                                                               int level) const noexcept;
+
+    // Retained for callers that only need the most detailed safe table.
     const std::array<float, tableSize>& tableForFrame (int frameIndex, float increment) const noexcept;
+
+private:
+    struct EmptyTag {};
+    explicit WavetableData (EmptyTag) noexcept {}
+    friend class WavetableImporter;
 };
 
 class WavetableOscillator
@@ -48,4 +66,6 @@ public:
 private:
     double sampleRate = 44100.0;
     float phase = 0.0f, increment = 0.0f, position = 0.0f;
+    float mipSelectionIncrement = -1.0f;
+    WavetableData::MipSelection mipSelection {};
 };

@@ -1,0 +1,57 @@
+# SEOUL DSP CPU optimization evidence
+
+목적: 16화음·유니슨 8/8/8 워스트 케이스에서의 오디오 스레드 과부하를 측정 가능한 단계로 줄인다. 첫 단계는 측정(Phase 0)과 음질 무손실 최적화(Phase 1) + 고정비 절감(Phase 2 일부)이다.
+
+## 측정 도구
+
+- `Tools/CpuBench.cpp`: 실제 `processBlock`을 48 kHz / 64-sample / 스테레오로 2초 렌더. 워밍업 1회 + 측정 3회, 중앙값 보고.
+  - 시나리오: `solo-unison8` (보이스 1), `dense16-unison8` (보이스 16, saturation/drive/LFO/drift 최대)
+- 실행: `cmake --build Build-Release --target CpuBench -j 8 && Build-Release/CpuBench`
+
+## 결과 (Apple Silicon 로컬, Release, 동일 조건 3회 중앙값)
+
+| 단계 | solo median | dense16 median | dense16 realtime factor | 비고 |
+| --- | --- | --- | --- | --- |
+| baseline | 81.5 ms | 1293.0 ms | 1.55x | [baseline.json](../../Build/quality-cpu/baseline.json) |
+| Phase 1 (레이아웃/MIP 캐시, 호이스트) | 64.9 ms (-20%) | 981.0 ms (-24%) | 2.04x | [phase1.json](../../Build/quality-cpu/phase1.json) |
+| Phase 2 (새추레이션 0 드라이브 스킵) | 62.9 ms (-23%) | 991.3 ms (-23%) | 2.02x | [phase2-satbypass.json](../../Build/quality-cpu/phase2-satbypass.json) |
+
+- dense 시나리오는 saturation 최대이므로 새추레이션 스킵의 이득이 없고 노이즈 범위 내다. 스킵 이득은 드라이브 0 패치에서 발생한다.
+
+## 변경 내용
+
+1. [UnisonBank.cpp](../../Source/DSP/UnisonBank.cpp): 레인 레이아웃(cents/pan/gain/frequencyRatio/leftGain/rightGain)을 파라미터 변경 시에만 재계산. 매 샘플 `makeUnisonLayout`, `exp2`, `sqrt` 제거. 산술식은 기존과 동일.
+2. [WavetableOscillator.cpp](../../Source/DSP/WavetableOscillator.cpp): `selectMipLevels`을 increment 변경 시에만 재계산(캐시).
+3. [SynthVoice.cpp](../../Source/DSP/SynthVoice.cpp): 블록 불변값(driftIncrement, spread, detune×keyTrack)을 샘플 루프 밖으로 호이스트. saturation ≤ 0.005 블록은 오버샘플+`tanh` 스킵(오버샘플러 상태/지연은 유지).
+
+## 검증
+
+- Release ctest 9/9 통과 (AudioQualityMetrics, ProcessorQuality, OfflineRenderer, GoldenComparator, UnisonBank, WavetableDSP, WavetableImporter, OutputSafety, ProcessorSmoke).
+- saturation 바이패스 경로 보강 테스트 추가: drive 0 vs 0.9 렌더가 달라짐을 확인 (`saturation drive changes the rendered signal`).
+- 산술 동등성: Phase 1은 소스 수준에서 캐시/호이스트만 포함(floating point 재배열 없음). 다만 바이너리 레벨에서는 아래 A/B 결과처럼 미세한 출력 차이가 존재한다.
+
+## 호스트 검증 게이트 (2026-09-15, CPU 최적화 Release 빌드)
+
+- pluginval VST3 strictness 10: **SUCCESS**, assertion 0. 로그: [pluginval-cpuopt-release-strictness10.log](../../Build/quality-cpu/host-validation/pluginval-cpuopt-release-strictness10.log)
+- auval AU (aumu Hwbl Eona): **PASS**, exit 0. 로그: [auval-cpuopt-release.log](../../Build/quality-cpu/host-validation/auval-cpuopt-release.log)
+- eonqc 헤드리스 호스트 스모크: 6시나리오 모두 non_finite=0. 리포트: [eonqc-report-rel.json](../../Build/quality-cpu/host-validation/eonqc-report-rel.json)
+- REAPER 7.79 ReaScript 자동 렌더: status=pass, 파라미터 58개 확인, 동일 바이너리 2회 렌더 비트 동일. 로그: [reaper-render-log-current.txt](../../Build/quality-cpu/host-validation/reaper-render-log-current.txt)
+
+## A/B 비교 (구형 빌드 2026-09-06 fixture 대비)
+
+같은 fixture 재렌더 결과 66개 중 silence/chord-32/stress-128 6개는 비트 동일, 나머지 48개는 RMS 정렬 오차 약 -48 ~ -55 dBFS로 상이. 호스트 경로(REAPER 렌더)에서도 동일 크기로 확인:
+
+| 비교 | latency | aligned RMS error | aligned max error |
+| --- | --- | --- | --- |
+| 신형 REAPER 렌더 ↔ 신형 오프라인 fixture | -3 samples | -68.75 dBFS | -39.25 dBFS |
+| 신형 REAPER 렌더 ↔ 구형(9/6) REAPER 렌더 | -4 samples | -59.00 dBFS | -40.02 dBFS |
+
+해석: 같은 바이너리끼리는 -68.75 dBFS 수준으로 일관되므로 새 코드는 자체 결함이 아니라 "구형 바이너리 대비 미세하게 다른 새 정상 동작"이다. 위상 누적 + Hermite 보간의 인덱스 분기 특성상 컴파일러 최적화 차이(FP 재연관, 인라인 확장 변화)로 미세 비트 차이가 발생하고, 유니슨 파형이 decorrelation되어 RMS 차이로 관측된 것으로 추정한다. 가청 유의미성은 별도 청취 게이트의 영역이다(오프라인 메트릭만으로 판정하지 않는다).
+
+기존 관찰(회귀 아님): dense_chord_16 peak +3.07 dBFS(0 dBFS 초과)는 Debug(최적화 전)에서도 +3.05 dB로 존재하던 동작이다. 별도 과제로 추적.
+
+## 미완료 게이트
+
+- Ableton Live 스모크 미실행 (REAPER는 완료).
+- Phase 2 잔여 항목: maxVoices 파라미터, fast-tanh 옵션, LFO 블록레이트 옵션(음질 메트릭 + 청취 필요).
+- xctrace 프로파일 캡처는 보류(벤치 중앙값으로 우선 추적).
