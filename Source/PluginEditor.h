@@ -55,17 +55,18 @@ private:
     void layoutTypeSelector();
 
     HybridWavetableAudioProcessor& processor;
-    CyberpunkLookAndFeel lookAndFeel;
+   CyberpunkLookAndFeel lookAndFeel;
 
-    juce::TextButton loadButton { "Load Audio" }, presetButton { "Save Preset" }, loadPresetButton { "Load Preset" };
-    juce::TextButton midiLearnButton { "Learn CC" };
-    juce::ComboBox midiLearnParameter, factoryPresetMenu, uiTypeMenu;
-    juce::Slider osc1, osc2, osc3, cutoff, resonance, drive, saturation, filterEnvAmount, output;
-    juce::Slider osc1Detune, osc2Detune, osc3Detune, unisonKeyTrack;
-    std::array<juce::Slider, 8> envelopeSliders;
-    juce::ComboBox filterType, slope;
-    juce::Label title, signatureLabel, wavetableSection, oscillatorSection, filterSection, envelopeSection, factoryPresetLabel, uiTypeLabel;
-    std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> a1, a2, a3, ac, ar, ad, as, afe, ao;
+   juce::TextButton loadButton { "Load Audio" }, presetButton { "Save Preset" }, loadPresetButton { "Load Preset" };
+   juce::TextButton midiLearnButton { "Learn CC" };
+   juce::ComboBox midiLearnParameter, factoryPresetMenu, uiTypeMenu;
+   juce::Slider osc1, osc2, osc3, cutoff, resonance, drive, saturation, filterEnvAmount, output;
+   juce::Slider osc1Detune, osc2Detune, osc3Detune, unisonKeyTrack;
+   std::array<juce::Slider, 8> envelopeSliders;
+juce::ComboBox filterType, slope;
+juce::Label title, signatureLabel, wavetableSection, oscillatorSection, filterSection, envelopeSection, factoryPresetLabel, uiTypeLabel;
+juce::Label midiLearnLabel, filterTypeLabel, slopeLabel;
+std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> a1, a2, a3, ac, ar, ad, as, afe, ao;
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> ad1, ad2, ad3, akt;
     std::array<std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment>, 8> envelopeAttachments;
     std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> at, asl;

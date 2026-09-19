@@ -57,10 +57,13 @@ void CyberpunkLookAndFeel::drawRotarySlider (juce::Graphics& g, int x, int y, in
         g.setColour (accent.withAlpha (0.08f));
         g.fillEllipse (knob.expanded (7.0f));
     }
-    g.setColour (body);
-    g.fillEllipse (knob);
-    g.setColour (outline);
-    g.drawEllipse (knob, 1.5f);
+    if (currentSkin.knobStyle != 5)
+    {
+        g.setColour (body);
+        g.fillEllipse (knob);
+        g.setColour (outline);
+        g.drawEllipse (knob, 1.5f);
+    }
 
     const auto angle = rotaryStartAngle + sliderPosProportional * (rotaryEndAngle - rotaryStartAngle);
     const float arcRadius = knob.reduced (4.0f).getWidth() * 0.5f;
@@ -127,6 +130,107 @@ void CyberpunkLookAndFeel::drawRotarySlider (juce::Graphics& g, int x, int y, in
             g.strokePath (baseArc, juce::PathStrokeType (1.2f));
             break;
         }
+        case 5: // ONYX PRISM: dark steel bezel under a cyan->magenta value arc
+        {
+            const float outerRadius = knob.getWidth() * 0.5f;
+            const float prismArcRadius = outerRadius - 2.5f;
+
+            // 1. Fine machined tick skirt (64 ticks outside the arc)
+            {
+                constexpr int tickCount = 64;
+                const float skirtOuter = outerRadius + 2.5f;
+                const float skirtInner = skirtOuter - 3.5f;
+                juce::Path ticks;
+                for (int i = 0; i < tickCount; ++i)
+                {
+                    const float t = (float) i / (float) tickCount;
+                    const float a = rotaryStartAngle + t * (rotaryEndAngle - rotaryStartAngle);
+                    ticks.startNewSubPath (centre + juce::Point<float> (std::cos (a), std::sin (a)) * skirtInner);
+                    ticks.lineTo (centre + juce::Point<float> (std::cos (a), std::sin (a)) * skirtOuter);
+                }
+                g.setColour (juce::Colour (0x55a5cde3));
+                g.strokePath (ticks, juce::PathStrokeType (1.0f));
+            }
+
+            // 2. Glow Arc & Track
+            juce::Path trackArc;
+            trackArc.addCentredArc (centre.x, centre.y, prismArcRadius, prismArcRadius, 0.0f, rotaryStartAngle, rotaryEndAngle, true);
+            g.setColour (juce::Colours::white.withAlpha (0.09f));
+            g.strokePath (trackArc, juce::PathStrokeType (2.4f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+            if (sliderPosProportional > 0.001f)
+            {
+                const auto from = skinColour (currentSkin.accent);
+                const auto to = skinColour (currentSkin.accentAlt);
+                juce::ColourGradient arcGrad (from, centre.x + std::cos (rotaryStartAngle) * prismArcRadius,
+                                              centre.y + std::sin (rotaryStartAngle) * prismArcRadius,
+                                              to, centre.x + std::cos (rotaryEndAngle) * prismArcRadius,
+                                              centre.y + std::sin (rotaryEndAngle) * prismArcRadius, true);
+                juce::Path valueArc;
+                valueArc.addCentredArc (centre.x, centre.y, prismArcRadius, prismArcRadius, 0.0f, rotaryStartAngle, angle, true);
+                // soft bloom under the arc
+                juce::ColourGradient bloomGrad (from.withAlpha (0.45f), centre.x + std::cos (rotaryStartAngle) * prismArcRadius,
+                                                centre.y + std::sin (rotaryStartAngle) * prismArcRadius,
+                                                to.withAlpha (0.45f), centre.x + std::cos (rotaryEndAngle) * prismArcRadius,
+                                                centre.y + std::sin (rotaryEndAngle) * prismArcRadius, true);
+                g.setGradientFill (bloomGrad);
+                g.strokePath (valueArc, juce::PathStrokeType (6.5f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+                // core sharp stroke
+                g.setGradientFill (arcGrad);
+                g.strokePath (valueArc, juce::PathStrokeType (2.4f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+            }
+
+            // 3. Machined Steel Bezel Ring
+            const float bezelOuter = outerRadius - 4.5f;
+            const float bezelInner = outerRadius - 7.5f;
+            juce::Path bezel;
+            bezel.addEllipse (centre.x - bezelOuter, centre.y - bezelOuter, bezelOuter * 2.0f, bezelOuter * 2.0f);
+            bezel.setUsingNonZeroWinding (false);
+            bezel.addEllipse (centre.x - bezelInner, centre.y - bezelInner, bezelInner * 2.0f, bezelInner * 2.0f);
+
+            // Conic-like steel gradient across diagonal
+            juce::ColourGradient steelGrad (juce::Colour (0xff22303e), centre.x - bezelOuter, centre.y - bezelOuter,
+                                            juce::Colour (0xff51708c), centre.x + bezelOuter, centre.y + bezelOuter, false);
+            steelGrad.addColour (0.24f, juce::Colour (0xff182634));
+            steelGrad.addColour (0.40f, juce::Colour (0xff5c7a96));
+            steelGrad.addColour (0.56f, juce::Colour (0xff1c2a38));
+            steelGrad.addColour (0.72f, juce::Colour (0xff56748e));
+            steelGrad.addColour (0.86f, juce::Colour (0xff14202c));
+            g.setGradientFill (steelGrad);
+            g.fillPath (bezel);
+
+            // Bezel drop shadow & top rim highlight
+            g.setColour (juce::Colours::black.withAlpha (0.6f));
+            g.drawEllipse (centre.x - bezelOuter, centre.y - bezelOuter, bezelOuter * 2.0f, bezelOuter * 2.0f, 1.0f);
+            juce::Path bezelHiArc;
+            bezelHiArc.addCentredArc (centre.x, centre.y, bezelOuter - 0.5f, bezelOuter - 0.5f,
+                                      0.0f, juce::degreesToRadians (210.0f), juce::degreesToRadians (330.0f), true);
+            g.setColour (juce::Colours::white.withAlpha (0.45f));
+            g.strokePath (bezelHiArc, juce::PathStrokeType (1.0f));
+
+            // 4. Inner Dark Cap
+            const float capRadius = bezelInner;
+            juce::ColourGradient capGrad (juce::Colour (0xff33506a), centre.x - capRadius * 0.36f, centre.y - capRadius * 0.48f,
+                                          juce::Colour (0xff0a1520), centre.x + capRadius * 0.5f, centre.y + capRadius * 0.6f, true);
+            capGrad.addColour (0.45f, juce::Colour (0xff1b3348));
+            capGrad.addColour (0.78f, juce::Colour (0xff0e1d2b));
+            g.setGradientFill (capGrad);
+            g.fillEllipse (centre.x - capRadius, centre.y - capRadius, capRadius * 2.0f, capRadius * 2.0f);
+
+            // Inner fine border ring
+            const float innerRingRadius = capRadius - 5.0f;
+            if (innerRingRadius > 2.0f)
+            {
+                g.setColour (juce::Colour (0x2b96c8f0));
+                g.drawEllipse (centre.x - innerRingRadius, centre.y - innerRingRadius, innerRingRadius * 2.0f, innerRingRadius * 2.0f, 1.0f);
+            }
+
+            // Specular glass glare overlay
+            juce::ColourGradient specGrad (juce::Colours::white.withAlpha (0.16f), centre.x - capRadius, centre.y - capRadius,
+                                           juce::Colours::transparentWhite, centre.x + capRadius * 0.3f, centre.y + capRadius * 0.3f, false);
+            g.setGradientFill (specGrad);
+            g.fillEllipse (centre.x - capRadius, centre.y - capRadius, capRadius * 2.0f, capRadius * 2.0f);
+            break;
+        }
         default: // classic arc
         {
             juce::Path trackArc;
@@ -141,21 +245,51 @@ void CyberpunkLookAndFeel::drawRotarySlider (juce::Graphics& g, int x, int y, in
         }
     }
 
-    juce::Line<float> pointer (centre, centre + juce::Point<float> (std::cos (angle), std::sin (angle)) * (knob.getWidth() * 0.29f));
-    g.setColour (skinColour (currentSkin.text).withAlpha (0.92f));
-    g.drawLine (pointer, 2.0f);
-    g.setColour (accent);
-    g.fillEllipse (centre.x - 2.5f, centre.y - 2.5f, 5.0f, 5.0f);
+    if (currentSkin.knobStyle == 5)
+    {
+        // slim glowing pointer with white jewel tip (ONYX PRISM)
+        const auto outerRadius = knob.getWidth() * 0.5f;
+        const auto capRadius = outerRadius - 7.5f;
+        juce::Path pointerBar;
+        pointerBar.addRoundedRectangle (-1.5f, -capRadius + 2.0f, 3.0f, capRadius * 0.55f, 1.5f);
+        g.saveState();
+        g.addTransform (juce::AffineTransform::rotation (angle, centre.x, centre.y).translated (centre.x, centre.y));
+        const auto from = skinColour (currentSkin.accent);
+        const auto to = skinColour (currentSkin.accentAlt);
+        // Needle glow
+        g.setColour (from.withAlpha (0.4f));
+        g.fillRoundedRectangle (-2.5f, -capRadius + 1.0f, 5.0f, capRadius * 0.55f + 2.0f, 2.0f);
+        g.setGradientFill (juce::ColourGradient (juce::Colour (0xffeaffff), 0.0f, -capRadius + 2.0f,
+                                                 from, 0.0f, -capRadius + 2.0f + capRadius * 0.55f, false));
+        g.fillPath (pointerBar);
+       g.restoreState();
+        const auto jewel = centre + juce::Point<float> (std::cos (angle), std::sin (angle)) * (capRadius - 3.5f);
+        g.setColour (from.withAlpha (0.55f));
+        g.fillEllipse (jewel.x - 4.5f, jewel.y - 4.5f, 9.0f, 9.0f);
+        g.setColour (juce::Colours::white);
+        g.fillEllipse (jewel.x - 2.5f, jewel.y - 2.5f, 5.0f, 5.0f);
+    }
+    else
+    {
+        juce::Line<float> pointer (centre, centre + juce::Point<float> (std::cos (angle), std::sin (angle)) * (knob.getWidth() * 0.29f));
+        g.setColour (skinColour (currentSkin.text).withAlpha (0.92f));
+        g.drawLine (pointer, 2.0f);
+        g.setColour (accent);
+        g.fillEllipse (centre.x - 2.5f, centre.y - 2.5f, 5.0f, 5.0f);
+    }
 
     // Values stay out of the way until the performer is actively changing a control.
-    if (slider.isMouseButtonDown())
+    if (slider.isMouseButtonDown() || currentSkin.knobStyle == 5)
     {
-        g.setColour (skinColour (currentSkin.backgroundBottom).withAlpha (0.94f));
-        g.fillRoundedRectangle (valueBounds, 3.0f);
-        g.setColour (accent.withAlpha (0.9f));
-        g.drawRoundedRectangle (valueBounds, 3.0f, 1.0f);
-        g.setFont (juce::Font (juce::FontOptions{}.withHeight (10.0f).withStyle ("Bold")));
-        g.setColour (skinColour (currentSkin.text));
+        if (slider.isMouseButtonDown())
+        {
+            g.setColour (skinColour (currentSkin.backgroundBottom).withAlpha (0.94f));
+            g.fillRoundedRectangle (valueBounds, 3.0f);
+            g.setColour (accent.withAlpha (0.9f));
+            g.drawRoundedRectangle (valueBounds, 3.0f, 1.0f);
+        }
+        g.setFont (juce::Font (juce::FontOptions{}.withHeight (currentSkin.knobStyle == 5 ? 8.5f : 10.0f).withStyle ("Bold")));
+        g.setColour (currentSkin.knobStyle == 5 ? accent.withAlpha (0.9f) : skinColour (currentSkin.text));
         g.drawFittedText (slider.getTextFromValue (slider.getValue()), valueBounds.toNearestInt(), juce::Justification::centred, 1);
     }
 }
@@ -163,49 +297,60 @@ void CyberpunkLookAndFeel::drawRotarySlider (juce::Graphics& g, int x, int y, in
 void CyberpunkLookAndFeel::drawButtonBackground (juce::Graphics& g, juce::Button& button, const juce::Colour& backgroundColour, bool highlighted, bool down)
 {
     auto r = button.getLocalBounds().toFloat().reduced (1.0f);
-    auto fill = down ? c (currentSkin.accent).withAlpha (0.25f) : backgroundColour.withAlpha (0.96f);
+    auto fill = down ? c (currentSkin.accent).withAlpha (0.25f) : juce::Colours::white.withAlpha (0.08f);
     if (highlighted) fill = fill.brighter (0.16f);
+
+    // Drop shadow
+    g.setColour (juce::Colours::black.withAlpha (0.5f));
+    g.fillRoundedRectangle (r.translated (0.0f, 2.0f), 5.0f);
+
     g.setColour (fill);
-    g.fillRoundedRectangle (r, 4.0f);
-    g.setColour (highlighted ? c (currentSkin.accent) : c (currentSkin.panelLine));
-    g.drawRoundedRectangle (r, 4.0f, down ? 2.0f : 1.0f);
-    const auto edge = c (currentSkin.accent);
-    g.setColour (edge);
-    g.fillRect (r.getX(), r.getY(), 3.0f, r.getHeight());
-    g.fillRect (r.getRight() - 3.0f, r.getBottom() - 3.0f, 3.0f, 3.0f);
+    g.fillRoundedRectangle (r, 5.0f);
+
+    // 1px top highlight
+    juce::Path topHighlight;
+    topHighlight.addRoundedRectangle (r.getX(), r.getY(), r.getWidth(), 2.0f, 1.0f);
+    g.setColour (juce::Colours::white.withAlpha (0.2f));
+    g.fillPath (topHighlight);
+
+    g.setColour (highlighted ? c (currentSkin.accent) : juce::Colours::white.withAlpha (0.14f));
+    g.drawRoundedRectangle (r, 5.0f, down ? 1.5f : 1.0f);
 }
 
 void CyberpunkLookAndFeel::drawButtonText (juce::Graphics& g, juce::TextButton& button, bool highlighted, bool down)
 {
-    g.setColour (down ? skinColour (currentSkin.text) : (highlighted ? c (currentSkin.accent) : c (currentSkin.text)));
-    g.setFont (juce::Font (juce::FontOptions{}.withHeight (12.0f).withStyle ("Bold")));
-    g.drawFittedText (button.getButtonText(), button.getLocalBounds().reduced (8, 0), juce::Justification::centred, 1);
+    g.setColour (down ? skinColour (currentSkin.text) : (highlighted ? c (currentSkin.accent) : juce::Colour (0xffd8f8ff)));
+    g.setFont (juce::Font (juce::FontOptions{}.withHeight (10.0f).withStyle ("Bold").withKerningFactor (0.08f)));
+    g.drawFittedText (button.getButtonText().toUpperCase(), button.getLocalBounds().reduced (6, 0), juce::Justification::centred, 1);
 }
 
 void CyberpunkLookAndFeel::drawComboBox (juce::Graphics& g, int width, int height, bool isButtonDown, int, int, int, int, juce::ComboBox& box)
 {
     auto r = juce::Rectangle<float> (1.0f, 1.0f, (float) width - 2.0f, (float) height - 2.0f);
-    g.setColour (isButtonDown ? c (currentSkin.panel).brighter (0.3f) : c (currentSkin.backgroundBottom));
-    g.fillRoundedRectangle (r, 4.0f);
-    g.setColour (box.isMouseOver() ? c (currentSkin.accent) : c (currentSkin.panelLine));
-    g.drawRoundedRectangle (r, 4.0f, 1.0f);
+    // Dark inset background with shadow
+    g.setColour (juce::Colours::black.withAlpha (0.45f));
+    g.fillRoundedRectangle (r, 5.0f);
+
+    g.setColour (box.isMouseOver() ? c (currentSkin.accent) : juce::Colours::white.withAlpha (0.14f));
+    g.drawRoundedRectangle (r, 5.0f, 1.0f);
+
     juce::Path arrow;
-    arrow.addTriangle ((float) width - 18.0f, height * 0.42f, (float) width - 8.0f, height * 0.42f, (float) width - 13.0f, height * 0.64f);
-    g.setColour (c (currentSkin.accentAlt));
+    arrow.addTriangle ((float) width - 16.0f, height * 0.44f, (float) width - 8.0f, height * 0.44f, (float) width - 12.0f, height * 0.62f);
+    g.setColour (c (currentSkin.accentAlt).withAlpha (0.85f));
     g.fillPath (arrow);
 }
 
 void CyberpunkLookAndFeel::positionComboBoxText (juce::ComboBox& box, juce::Label& label)
 {
-    label.setBounds (1, 1, box.getWidth() - 30, box.getHeight() - 2);
+    label.setBounds (2, 1, box.getWidth() - 24, box.getHeight() - 2);
     label.setJustificationType (juce::Justification::centredLeft);
-    label.setBorderSize (juce::BorderSize<int> (0, 12, 0, 24));
-    const auto textHeight = box.getWidth() < 120 ? 10.0f : 12.0f;
-    label.setFont (juce::Font (juce::FontOptions{}.withHeight (textHeight)));
+    label.setBorderSize (juce::BorderSize<int> (0, 8, 0, 16));
+    const auto textHeight = box.getWidth() < 120 ? 9.5f : 10.5f;
+    label.setFont (juce::Font (juce::FontOptions{ "Menlo", "Regular", textHeight }.withKerningFactor (0.05f)));
     // ComboBox owns a child Label, so explicitly propagate the skin's text
     // colour here; otherwise the default black Label text disappears on the
     // near-black panel in headless snapshots and some hosts.
-    label.setColour (juce::Label::textColourId, findColour (juce::ComboBox::textColourId));
+    label.setColour (juce::Label::textColourId, c (currentSkin.accent));
     label.setColour (juce::Label::backgroundColourId, juce::Colours::transparentBlack);
 }
 
@@ -214,17 +359,45 @@ void WavetableEditorComponent::paint (juce::Graphics& g)
     jassert (skin != nullptr);
     const auto& s = *skin;
     auto area = getLocalBounds().toFloat().reduced (1.0f);
-    g.setColour (skinColour (s.panel).withAlpha (0.97f));
-    g.fillRoundedRectangle (area, 8.0f);
-    g.setColour (skinColour (s.panelLine));
-    g.drawRoundedRectangle (area, 8.0f, 1.0f);
-    auto wave = area.reduced (18.0f, 34.0f);
-    g.setColour (skinColour (s.panelLine).withAlpha (0.4f));
-    for (int x = (int) wave.getX(); x < wave.getRight(); x += 32) g.drawVerticalLine (x, wave.getY(), wave.getBottom());
-    for (int y = (int) wave.getY(); y < wave.getBottom(); y += 24) g.drawHorizontalLine (y, wave.getX(), wave.getRight());
+
+    // Panel Glass Fill with subtle drop shadow
+    g.setColour (juce::Colours::black.withAlpha (0.45f));
+    g.fillRoundedRectangle (area.translated (0.0f, 4.0f), 10.0f);
+
+    g.setColour (juce::Colours::white.withAlpha (0.055f));
+    g.fillRoundedRectangle (area, 10.0f);
+
+    // 1px top highlight
+    juce::Path topHighlight;
+    topHighlight.addRoundedRectangle (area.getX(), area.getY(), area.getWidth(), 2.0f, 1.0f);
+    g.setColour (juce::Colours::white.withAlpha (0.22f));
+    g.fillPath (topHighlight);
+
+    g.setColour (juce::Colours::white.withAlpha (0.14f));
+    g.drawRoundedRectangle (area, 10.0f, 1.0f);
+
+    // Vertical Korean Calligraphy "서울" Neon Glow on right side
     const auto accent = skinColour (s.accent);
     const auto accentAlt = skinColour (s.accentAlt);
-    g.setColour (accent.withAlpha (0.22f));
+
+    g.saveState();
+    juce::Font seoulFont (juce::FontOptions { "Apple SD Gothic Neo", "Bold", 26.0f }.withKerningFactor (0.2f));
+    g.setFont (seoulFont);
+    const float seoulX = area.getRight() - 44.0f;
+    // Neon Bloom "서울"
+    g.setColour (accent.withAlpha (0.25f));
+    g.drawText (juce::String::fromUTF8 ("서"), (int) seoulX - 2, (int) area.getY() + 10, 36, 32, juce::Justification::centred);
+    g.drawText (juce::String::fromUTF8 ("울"), (int) seoulX - 2, (int) area.getY() + 44, 36, 32, juce::Justification::centred);
+    g.setColour (accent.withAlpha (0.90f));
+    g.drawText (juce::String::fromUTF8 ("서"), (int) seoulX, (int) area.getY() + 10, 32, 32, juce::Justification::centred);
+    g.drawText (juce::String::fromUTF8 ("울"), (int) seoulX, (int) area.getY() + 44, 32, 32, juce::Justification::centred);
+    g.restoreState();
+
+    auto wave = area.reduced (18.0f, 32.0f).withTrimmedBottom (26.0f).withTrimmedRight (44.0f);
+    g.setColour (juce::Colours::white.withAlpha (0.05f));
+    for (int x = (int) wave.getX(); x < wave.getRight(); x += 36) g.drawVerticalLine (x, wave.getY(), wave.getBottom());
+    for (int y = (int) wave.getY(); y < wave.getBottom(); y += 22) g.drawHorizontalLine (y, wave.getX(), wave.getRight());
+    g.setColour (accent.withAlpha (0.18f));
     g.drawHorizontalLine ((int) wave.getCentreY(), wave.getX(), wave.getRight());
     juce::Path p;
     const auto& frame = processor.wavetable.frames[0];
@@ -234,10 +407,13 @@ void WavetableEditorComponent::paint (juce::Graphics& g)
         const float y = juce::jmap (frame[(size_t) i], -1.0f, 1.0f, wave.getBottom(), wave.getY());
         if (x == 0) p.startNewSubPath (wave.getX() + x, y); else p.lineTo (wave.getX() + x, y);
     }
-    g.setColour (accent.withAlpha (0.14f));
+    // Multi-pass neon glow for the active waveform
+    g.setColour (accent.withAlpha (0.25f));
     g.strokePath (p, juce::PathStrokeType (8.0f));
+    g.setColour (accent.withAlpha (0.50f));
+    g.strokePath (p, juce::PathStrokeType (4.5f));
     g.setColour (accent);
-    g.strokePath (p, juce::PathStrokeType (2.0f));
+    g.strokePath (p, juce::PathStrokeType (2.4f));
     for (int h = 1; h <= 16; ++h)
     {
         float re = 0.0f, im = 0.0f;
@@ -249,17 +425,33 @@ void WavetableEditorComponent::paint (juce::Graphics& g)
         }
         const float mag = juce::jlimit (0.0f, 1.0f, std::sqrt (re * re + im * im) / (float) WavetableData::tableSize * 2.0f);
         const float x = wave.getX() + (h - 1) * wave.getWidth() / 16.0f;
-        g.setColour (accentAlt.withAlpha (0.18f));
+        g.setColour (accentAlt.withAlpha (0.15f));
         g.fillRect (x, wave.getBottom() - mag * 30.0f, wave.getWidth() / 28.0f, mag * 30.0f);
-        g.setColour (accentAlt);
+        g.setColour (accentAlt.withAlpha (0.8f));
         g.fillRect (x, wave.getBottom() - mag * 30.0f, wave.getWidth() / 28.0f, 2.0f);
     }
-    g.setColour (accent);
-    g.setFont (juce::Font (juce::FontOptions{}.withHeight (11.0f).withStyle ("Bold")));
-    g.drawText ("WAVETABLE // MORPH EDITOR", 18, 9, 260, 18, juce::Justification::left);
-    g.setColour (skinColour (s.textDim));
-    g.setFont (juce::Font (juce::FontOptions{}.withHeight (11.0f)));
-    g.drawText ("DRAG: DRAW   SHIFT+DRAG: HARMONICS   |   2048 SAMPLES", 290, 9, getWidth() - 308, 18, juce::Justification::right);
+
+    // Section header
+    g.setColour (juce::Colour (0xff5f7488));
+    g.setFont (juce::Font (juce::FontOptions{}.withHeight (9.0f).withStyle ("Bold").withKerningFactor (0.15f)));
+    g.drawText ("WAVETABLE", 16, 10, 160, 14, juce::Justification::left);
+
+    // Bottom status chips
+    const char* chips[] = { "3 OSC", "16 VOICE", "POS 0.35", "UNI 8" };
+    int chipX = (int) area.getX() + 16;
+    const int chipY = (int) area.getBottom() - 24;
+    for (auto* text : chips)
+    {
+        juce::Rectangle<float> chipBounds ((float) chipX, (float) chipY, 64.0f, 18.0f);
+        g.setColour (juce::Colours::black.withAlpha (0.45f));
+        g.fillRoundedRectangle (chipBounds, 4.0f);
+        g.setColour (juce::Colours::white.withAlpha (0.14f));
+        g.drawRoundedRectangle (chipBounds, 4.0f, 1.0f);
+        g.setColour (accent);
+        g.setFont (juce::Font (juce::FontOptions{ "Menlo", "Regular", 9.5f }.withKerningFactor (0.05f)));
+        g.drawFittedText (text, chipBounds.toNearestInt(), juce::Justification::centred, 1);
+        chipX += 70;
+    }
 }
 
 void WavetableEditorComponent::mouseDown (const juce::MouseEvent& e) { mouseDrag (e); }
@@ -350,7 +542,7 @@ HybridWavetableAudioProcessorEditor::HybridWavetableAudioProcessorEditor (Hybrid
     addAndMakeVisible (factoryPresetLabel);
     factoryPresetMenu.addItemList (processor.getFactoryPresetNames(), 1);
     factoryPresetMenu.setTextWhenNothingSelected ("SELECT FACTORY PRESET");
-    factoryPresetMenu.setTooltip ("Apply one of the 10 built-in random-generated presets");
+    factoryPresetMenu.setTooltip ("Apply one of the 11 built-in presets");
     factoryPresetMenu.onChange = [this] { processor.applyFactoryPreset (factoryPresetMenu.getSelectedItemIndex()); };
     addAndMakeVisible (factoryPresetMenu);
 

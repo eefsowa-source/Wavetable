@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head><meta charset="UTF-8"><title>SEOUL DSP - Knob Balanced Proposals</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#02040a;color:#d8f8ff;font-family:-apple-system,'Apple SD Gothic Neo',sans-serif;padding:30px 0 50px;display:flex;flex-direction:column;gap:20px;align-items:center}
+h1{font-size:16px;letter-spacing:3px;color:#8fa8bc;font-weight:600}
+.sub{font-size:12px;color:#5f7488;letter-spacing:1px}
+.prop{display:flex;flex-direction:column;align-items:center;gap:14px;margin-top:14px}
+.pname{font-size:13px;letter-spacing:2px;color:#e8f6ff;font-weight:800}
+.pname small{color:#7f95a8;font-weight:400;letter-spacing:1px;margin-left:10px;font-size:10.5px}
+.krow{display:flex;gap:44px;align-items:flex-end}
+.kcol{display:flex;flex-direction:column;align-items:center;gap:8px}
+.dbox{width:150px;height:150px;display:flex;align-items:center;justify-content:center;border-radius:12px;background:linear-gradient(165deg,#0b1626,#050a14);border:1px solid #16283c}
+.zoom{transform:scale(2.15);transform-origin:center}
+.kval{font-family:Menlo,monospace;font-size:9px;color:#5f7488;letter-spacing:1px}
+/* ==== SHARED STRUCTURE ==== */
+.ku{position:relative;width:56px;height:56px;filter:drop-shadow(0 10px 13px rgba(0,0,0,.6))}
+.ring{position:absolute;inset:0;border-radius:50%}
+.tk{border-radius:50%;background:repeating-conic-gradient(from -44deg,rgba(170,208,238,.42) 0deg .65deg,transparent .65deg 9deg);-webkit-mask:radial-gradient(farthest-side,transparent calc(100% - 6.5px),#000 calc(100% - 5.5px));mask:radial-gradient(farthest-side,transparent calc(100% - 6.5px),#000 calc(100% - 5.5px))}
+.bz{position:absolute;inset:4px;border-radius:50%}
+.cap{position:absolute;inset:8px;border-radius:50%}
+.spec{position:absolute;inset:0;border-radius:50%;background:linear-gradient(115deg,rgba(255,255,255,.16) 0%,rgba(255,255,255,.04) 30%,transparent 47%);pointer-events:none}
+.ind{position:absolute;inset:0;border-radius:50%;transform:rotate(var(--rot))}
+.arc{position:absolute;inset:0;transform:rotate(135deg)}
+/* ==== B1 BALANCED STEEL ==== */
+.b1 .tk{opacity:.55}
+.b1 .bz{background:conic-gradient(from 210deg,#1a2632,#46617a 10%,#14202c 24%,#526e88 40%,#182636 56%,#4c6880 72%,#101a26 86%,#1a2632);box-shadow:0 8px 16px rgba(0,0,0,.62),inset 0 1px 1px rgba(210,235,255,.32),inset 0 -2px 4px rgba(0,0,0,.68)}
+.b1 .cap{background:radial-gradient(circle at 32% 26%,#2e4a62 0%,#183046 45%,#0c1a28 78%,#081220 100%);box-shadow:inset 0 2px 3px rgba(180,220,255,.28),inset 0 -4px 8px rgba(0,0,0,.66),0 2px 5px rgba(0,0,0,.5)}
+.b1 .cap::before{content:"";position:absolute;inset:4.5px;border-radius:50%;border:1px solid rgba(150,200,240,.15);box-shadow:inset 0 1px 2px rgba(0,0,0,.5)}
+.b1 .ind::before{content:"";position:absolute;top:6.5px;left:calc(50% - 1px);width:2px;height:13px;border-radius:1.5px;background:linear-gradient(180deg,#f2ffff,var(--ac));box-shadow:0 0 6px var(--ac)}
+.b1 .ind::after{content:"";position:absolute;top:4.5px;left:calc(50% - 2px);width:4px;height:4px;border-radius:50%;background:#fff;box-shadow:0 0 5px #fff,0 0 11px var(--ac)}
+/* ==== B2 ONYX PRISM ==== */
+.b2 .tk{opacity:.45;background:repeating-conic-gradient(from -44deg,rgba(150,175,205,.5) 0deg .5deg,transparent .5deg 5.6deg)}
+.b2 .bz{background:conic-gradient(from 210deg,#10161d,#2c3a48 10%,#0c1219 24%,#34424f 40%,#0e151d 56%,#303e4b 72%,#0a1017 86%,#10161d);box-shadow:0 9px 18px rgba(0,0,0,.7),inset 0 1px 1px rgba(180,215,250,.22),inset 0 -3px 6px rgba(0,0,0,.75)}
+.b2 .cap{background:radial-gradient(circle at 31% 25%,#223648 0%,#122334 46%,#0a1622 78%,#060e18 100%);box-shadow:inset 0 2px 3px rgba(160,200,240,.22),inset 0 -5px 9px rgba(0,0,0,.72),0 2px 5px rgba(0,0,0,.55)}
+.b2 .cap::before{content:"";position:absolute;inset:4.5px;border-radius:50%;border:1px solid rgba(140,180,225,.13);box-shadow:inset 0 1px 2px rgba(0,0,0,.55)}
+.b2 .ind::before{content:"";position:absolute;top:6.5px;left:calc(50% - 1px);width:2px;height:13px;border-radius:1.5px;background:linear-gradient(180deg,#ffffff,var(--ac2,#ff4ad8));box-shadow:0 0 6px var(--ac2,#ff4ad8)}
+.b2 .ind::after{content:"";position:absolute;top:4.5px;left:calc(50% - 2px);width:4px;height:4px;border-radius:50%;background:#fff;box-shadow:0 0 5px #fff,0 0 12px var(--ac2,#ff4ad8)}
+/* ==== B3 ICE CHROME ==== */
+.b3 .tk{opacity:.6}
+.b3 .rim{inset:0;background:conic-gradient(from 0deg,rgba(255,255,255,.06),transparent 25%,rgba(255,255,255,.05) 50%,transparent 75%,rgba(255,255,255,.06));box-shadow:inset 0 0 4px rgba(0,0,0,.8);border-radius:50%}
+.b3 .bz{inset:5px;background:conic-gradient(from 210deg,#2a3a4a,#6c8aa6 10%,#20303e 24%,#7c98b2 40%,#243442 56%,#748ea8 72%,#1a2836 86%,#2a3a4a);box-shadow:0 8px 16px rgba(0,0,0,.6),inset 0 1px 1px rgba(255,255,255,.5),inset 0 -2px 5px rgba(0,0,0,.6)}
+.b3 .cap{inset:9px;background:radial-gradient(circle at 33% 27%,#3a5a78 0%,#1e3a54 46%,#101f30 78%,#0a1622 100%);box-shadow:inset 0 2px 3px rgba(200,235,255,.38),inset 0 -4px 8px rgba(0,0,0,.62),0 2px 5px rgba(0,0,0,.5)}
+.b3 .cap::before{content:"";position:absolute;inset:4px;border-radius:50%;border:1px solid rgba(170,215,250,.22);box-shadow:inset 0 1px 2px rgba(0,0,0,.5)}
+.b3 .ind::before{content:"";position:absolute;top:6px;left:calc(50% - 1px);width:2px;height:13.5px;border-radius:1.5px;background:linear-gradient(180deg,#ffffff,var(--ac));box-shadow:0 0 7px var(--ac),0 0 15px var(--ac)}
+.b3 .ind::after{content:"";position:absolute;top:4px;left:calc(50% - 2px);width:4px;height:4px;border-radius:50%;background:#fff;box-shadow:0 0 6px #fff,0 0 13px var(--ac)}
+</style></head>
+<body>
+<h1>SEOUL DSP &mdash; BALANCED KNOB PROPOSALS</h1>
+<div class="sub">A0~A4의 균형 조합 3안 · 값 25% / 64% / 90% 아크 채움 비교</div>
+<div id="stack"></div>
+<script>
+function unit(v,cls,gid){
+ var rot=(-135+v*2.7).toFixed(1);
+ var dash=(v*0.75).toFixed(1);
+ var grad=(cls==="b2")?'<defs><linearGradient id="'+gid+'" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#39d0d8"/><stop offset="1" stop-color="#ff4ad8"/></linearGradient></defs>':'<defs><linearGradient id="'+gid+'" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#7fe8ee"/><stop offset="1" stop-color="#39d0d8"/></linearGradient></defs>';
+ var u='<div class="ku '+cls+'">';
+ u+='<div class="ring tk"></div>';
+ if(cls==="b3")u+='<div class="ring rim"></div>';
+ u+='<div class="arc"><svg viewBox="0 0 56 56" style="position:absolute;inset:0">'+grad+'<circle fill="none" stroke="rgba(255,255,255,.08)" stroke-width="2.4" cx="28" cy="28" r="25.5" pathLength="100"/><circle fill="none" stroke="url(#'+gid+')" stroke-width="2.4" stroke-linecap="round" cx="28" cy="28" r="25.5" pathLength="100" stroke-dasharray="'+dash+' 100" style="filter:drop-shadow(0 0 4px rgba(57,208,216,.7))"/></svg></div>';
+ u+='<div class="ring bz"></div><div class="ring cap"><div class="spec"></div><div class="ind" style="--rot:'+rot+'deg"></div></div>';
+ return u+'</div>';
+}
+var VALS=[25,64,90];
+var PROPS=[
+ {cls:"b1",n:"B1 BALANCED STEEL",d:"촘촘 틱 절제 + 중간톤 강철 베젤 + 시안 그라데이션 아크 · 무난한 균형"},
+ {cls:"b2",n:"B2 ONYX PRISM",d:"다크 베젤 + 시안→마젠타 그라데이션 아크 + 촘촘 틱 · 가장 입체적 고급감"},
+ {cls:"b3",n:"B3 ICE CHROME",d:"이중 림 + 밝은 크롬 베젤 + 시안 아크 · 밝고 화려한 하이엔드"}
+];
+var html="";
+var gidN=0;
+PROPS.forEach(function(p){
+ html+='<div class="prop '+p.cls+'"><div class="pname">'+p.n+'<small>'+p.d+'</small></div><div class="krow">';
+ VALS.forEach(function(v){gidN++;html+='<div class="kcol '+p.cls+'"><div class="dbox"><div class="zoom">'+unit(v,p.cls,"g"+gidN)+'</div></div><div class="kval">'+v+'%</div></div>';});
+ html+='</div></div>';
+});
+document.getElementById("stack").innerHTML=html;
+</script></body></html>

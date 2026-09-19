@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head><meta charset="UTF-8"><title>SEOUL DSP - V1 Premium Knob</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#02040a;color:#d8f8ff;font-family:-apple-system,'Helvetica Neue','Apple SD Gothic Neo',sans-serif;padding:30px 0 50px;display:flex;flex-direction:column;gap:36px;align-items:center}
+h1{font-size:17px;letter-spacing:3px;color:#8fa8bc;font-weight:600}
+h2{font-size:11px;letter-spacing:3px;color:#5f7488;font-weight:600;margin-top:8px}
+.v1{--text:#d8f8ff;--accent:#39d0d8;--accent2:#ff4ad8;--panel:rgba(255,255,255,.055);--line:rgba(255,255,255,.14);--panelShadow:0 18px 42px rgba(0,0,0,.55),inset 0 1px 0 rgba(255,255,255,.22);--inset:rgba(0,0,0,.45);--insetShadow:inset 0 2px 8px rgba(0,0,0,.7);--btn:rgba(255,255,255,.08);--btnShadow:0 6px 14px rgba(0,0,0,.5),inset 0 1px 0 rgba(255,255,255,.2)}
+.win{width:1240px;height:790px;border-radius:14px;position:relative;overflow:hidden;background:linear-gradient(165deg,#0b1626 0%,#050a14 58%,#04070d 100%);border:1px solid #16283c;display:flex;flex-direction:column;flex:none}
+.tag{position:absolute;top:0;left:50%;transform:translateX(-50%);z-index:99;background:#000c;border:1px solid #2a3a50;border-top:none;padding:4px 16px;font-size:11px;letter-spacing:2px;color:#7f95a8;border-radius:0 0 8px 8px}
+.glass{position:absolute;inset:0;background:linear-gradient(115deg,rgba(255,255,255,.09) 0%,rgba(255,255,255,.02) 30%,transparent 48%);pointer-events:none;z-index:1}
+.topbar{display:flex;align-items:flex-end;gap:14px;padding:16px 22px 8px;position:relative;z-index:2}
+.brand{display:flex;align-items:baseline;gap:12px;margin-right:6px}
+.title{font-size:27px;font-weight:800;letter-spacing:3px;color:var(--text);text-shadow:0 0 14px var(--accent)}
+.sig{font-family:'Snell Roundhand',cursive;font-size:16px;color:var(--accent2);text-shadow:0 0 9px rgba(255,74,216,.55)}
+.spacer{flex:1}
+.lbl{font-size:8px;letter-spacing:1.6px;color:#5f7488;margin-bottom:4px}
+.menu-box{font-family:Menlo,monospace;font-size:11px;letter-spacing:1px;padding:6px 10px;border-radius:5px;min-width:128px;color:var(--accent);background:var(--inset);border:1px solid var(--line);box-shadow:var(--insetShadow);white-space:nowrap}
+.btn{font-size:10px;font-weight:700;letter-spacing:1.4px;padding:8px 12px;border-radius:5px;background:var(--btn);border:1px solid var(--line);color:var(--text);box-shadow:var(--btnShadow);white-space:nowrap;align-self:flex-end}
+.main{flex:1;display:flex;gap:16px;padding:12px 22px 20px;position:relative;z-index:2;min-height:0}
+.panel{border-radius:10px;background:var(--panel);border:1px solid var(--line);box-shadow:var(--panelShadow)}
+.wave{flex:1.18;position:relative;padding:12px 16px;display:flex;flex-direction:column;overflow:hidden;min-width:0}
+.sec{font-size:9px;letter-spacing:2.2px;color:#5f7488}
+.secrow{display:flex;justify-content:space-between;margin-bottom:2px}
+.seoul{position:absolute;right:12px;top:8px;font-size:28px;font-weight:800;color:var(--accent);opacity:.9;text-shadow:0 0 10px var(--accent),0 0 26px var(--accent);writing-mode:vertical-rl;letter-spacing:10px;z-index:2}
+svg.wave-svg{flex:1;width:100%;margin-top:6px;min-height:0}
+.chip{font-family:Menlo,monospace;font-size:10px;letter-spacing:1px;padding:3px 9px;border-radius:4px;background:var(--inset);border:1px solid var(--line);color:var(--accent);box-shadow:var(--insetShadow)}
+.wave-info{display:flex;gap:8px;margin-top:8px}
+.right{flex:1;display:flex;flex-direction:column;gap:12px;min-width:0}
+/* ==== PREMIUM MACHINED KNOB ==== */
+.knobs{display:grid;grid-template-columns:repeat(7,1fr);gap:10px 4px}
+.knob{display:flex;flex-direction:column;align-items:center;gap:5px}
+.kunit{position:relative;width:56px;height:56px;filter:drop-shadow(0 9px 12px rgba(0,0,0,.55))}
+.kticks{position:absolute;inset:0;border-radius:50%;background:repeating-conic-gradient(from -44deg,rgba(165,205,235,.34) 0deg .9deg,transparent .9deg 13.5deg);-webkit-mask:radial-gradient(farthest-side,transparent calc(100% - 7px),#000 calc(100% - 6px));mask:radial-gradient(farthest-side,transparent calc(100% - 7px),#000 calc(100% - 6px));opacity:.75}
+.karc{position:absolute;inset:0;transform:rotate(135deg)}
+.karc .tr{fill:none;stroke:rgba(255,255,255,.09);stroke-width:2.4}
+.karc .vl{fill:none;stroke:var(--accent);stroke-width:2.4;stroke-linecap:round;filter:drop-shadow(0 0 4px var(--accent))}
+.kbezel{position:absolute;inset:4.5px;border-radius:50%;background:conic-gradient(from 210deg,#22303e,#51708c 10%,#182634 24%,#5c7a96 40%,#1c2a38 56%,#56748e 72%,#14202c 86%,#22303e);box-shadow:0 8px 16px rgba(0,0,0,.6),inset 0 1px 1px rgba(255,255,255,.4),inset 0 -2px 4px rgba(0,0,0,.65)}
+.kcap{position:absolute;inset:7.5px;border-radius:50%;background:radial-gradient(circle at 32% 26%,#33506a 0%,#1b3348 45%,#0e1d2b 78%,#0a1520 100%);box-shadow:inset 0 2px 3px rgba(185,225,255,.3),inset 0 -4px 8px rgba(0,0,0,.65),0 2px 5px rgba(0,0,0,.5)}
+.kcap::before{content:"";position:absolute;inset:5px;border-radius:50%;border:1px solid rgba(150,200,240,.17);box-shadow:inset 0 1px 2px rgba(0,0,0,.55)}
+.kspec{position:absolute;inset:0;border-radius:50%;background:linear-gradient(115deg,rgba(255,255,255,.14) 0%,rgba(255,255,255,.03) 32%,transparent 46%);pointer-events:none}
+.kind{position:absolute;inset:0;border-radius:50%;transform:rotate(var(--rot))}
+.kind::before{content:"";position:absolute;top:7px;left:calc(50% - 1.5px);width:3px;height:14px;border-radius:2px;background:linear-gradient(180deg,#eaffff,var(--accent));box-shadow:0 0 8px var(--accent),0 0 18px var(--accent)}
+.kind::after{content:"";position:absolute;top:4.5px;left:calc(50% - 2.5px);width:5px;height:5px;border-radius:50%;background:#fff;box-shadow:0 0 6px #fff,0 0 13px var(--accent)}
+.klabel{font-size:7.5px;letter-spacing:1px;color:#6d8296;white-space:nowrap}
+.kval{font-family:Menlo,monospace;font-size:8px;letter-spacing:.5px;color:var(--accent);opacity:.9}
+.combos{display:flex;gap:10px;margin-top:10px}
+.env{flex:1;padding:10px 16px 12px;display:flex;flex-direction:column;min-height:0}
+.sliders{flex:1;display:grid;grid-template-columns:repeat(8,1fr);gap:12px;margin-top:8px;min-height:0}
+.sl{display:flex;flex-direction:column;align-items:center}
+.track{flex:1;width:8px;border-radius:4px;background:var(--inset);box-shadow:var(--insetShadow);position:relative}
+.fill{position:absolute;bottom:0;left:0;right:0;border-radius:4px;background:linear-gradient(180deg,var(--accent),var(--accent2));box-shadow:0 0 9px var(--accent)}
+.thumb{position:absolute;left:50%;transform:translate(-50%,50%);width:22px;height:12px;border-radius:4px;background:linear-gradient(180deg,rgba(255,255,255,.25),rgba(255,255,255,.05));border:1px solid var(--line);box-shadow:0 2px 6px rgba(0,0,0,.65)}
+/* ==== DETAIL ZOOM ==== */
+.detailrow{display:flex;gap:34px;align-items:flex-end}
+.dcard{display:flex;flex-direction:column;align-items:center;gap:14px}
+.dbox{width:210px;height:190px;display:flex;align-items:center;justify-content:center;border-radius:12px;background:linear-gradient(165deg,#0b1626,#050a14);border:1px solid #16283c}
+.dzoom{transform:scale(2.55);transform-origin:center}
+.dlabel{font-size:10px;letter-spacing:2px;color:#7f95a8}
+.stock{position:relative;width:56px;height:56px;border-radius:50%;background:radial-gradient(circle at 33% 28%,#3b5871,#16303f 60%,#0c1c28);box-shadow:0 6px 14px rgba(0,0,0,.6),inset 0 1px 1px rgba(255,255,255,.25)}
+.stock .si{position:absolute;inset:0;border-radius:50%;transform:rotate(38deg)}
+.stock .si::before{content:"";position:absolute;top:5px;left:calc(50% - 2px);width:4px;height:13px;border-radius:2px;background:var(--accent);box-shadow:0 0 7px var(--accent)}
+</style></head>
+<body>
+<h1>SEOUL DSP &mdash; V1 GLASS DEPTH + PREMIUM MACHINED KNOBS</h1>
+<div class="detailrow v1">
+ <div class="dcard"><div class="dbox"><div class="stock" style="--accent:#39d0d8"><div class="si"></div></div></div><div class="dlabel">BEFORE · STOCK</div></div>
+ <div class="dcard"><div class="dbox"><div class="dzoom" id="zoomslot"></div></div><div class="dlabel">AFTER · MACHINED GLASS (tick skirt + steel bezel + glow arc + jewel)</div></div>
+</div>
+<h2>FULL LAYOUT PREVIEW</h2>
+<div id="stack"></div>
+<script>
+function unitMarkup(val){
+ var rot=(-135+val*2.7).toFixed(1);
+ var dash=(val*0.75).toFixed(1);
+ var u='<div class="kunit">';
+ u+='<div class="kticks"></div>';
+ u+='<svg class="karc" viewBox="0 0 56 56"><circle class="tr" cx="28" cy="28" r="25.5" pathLength="100"/><circle class="vl" cx="28" cy="28" r="25.5" pathLength="100" stroke-dasharray="'+dash+' 100"/></svg>';
+ u+='<div class="kbezel"></div><div class="kcap"><div class="kspec"></div><div class="kind" style="--rot:'+rot+'deg"></div></div>';
+ return u+'</div>';
+}
+document.getElementById("zoomslot").innerHTML=unitMarkup(64);
+var KO=[["OSC1 POS",35],["OSC2 POS",62],["OSC3 POS",18],["OSC1 DT",44],["OSC2 DT",71],["OSC3 DT",28],["KEY TRK",55]];
+var KF=[["CUTOFF",64],["RESO",38],["DRIVE",22],["SAT",47],["ENV AMT",58],["OUTPUT",76]];
+var ENV=[82,64,38,90,55,30,72,45];
+function knob(l,v){return '<div class="knob">'+unitMarkup(v)+'<div class="klabel">'+l+'</div><div class="kval">'+(v/100).toFixed(2)+'</div></div>';}
+function slider(v){var p=Math.max(6,Math.min(94,v));return '<div class="sl"><div class="track"><div class="fill" style="height:'+p+'%"></div><div class="thumb" style="bottom:'+p+'%"></div></div></div>';}
+var osc=KO.map(function(k){return knob(k[0],k[1]);}).join("");
+var fx=KF.map(function(k){return knob(k[0],k[1]);}).join("");
+var env=ENV.map(slider).join("");
+var w='<div class="win v1"><div class="tag">V1 PREMIUM · GLASS DEPTH / NEON SEOUL</div><div class="glass"></div>';
+w+='<div class="topbar"><div class="brand"><div class="title">SEOUL DSP</div><div class="sig">aoi yume</div></div>';
+w+='<div><div class="lbl">FACTORY // RANDOM BANK</div><div class="menu-box">STACK 11 // FIFTHS</div></div>';
+w+='<div><div class="lbl">UI TYPE</div><div class="menu-box">NEON HAN // L01</div></div>';
+w+='<div><div class="lbl">MIDI LEARN</div><div class="menu-box">CUTOFF</div></div>';
+w+='<div class="btn">LEARN CC</div><div class="spacer"></div><div class="btn">LOAD AUDIO</div><div class="btn">SAVE PRESET</div><div class="btn">LOAD PRESET</div></div>';
+w+='<div class="main"><div class="wave panel"><div class="secrow"><div class="sec">WAVETABLE</div></div><div class="seoul">서울</div>';
+w+='<svg class="wave-svg" viewBox="0 0 640 190" preserveAspectRatio="none">';
+w+='<defs><filter id="gw" x="-20%" y="-40%" width="140%" height="180%"><feGaussianBlur stdDeviation="3.2" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>';
+w+='<line x1="224" y1="8" x2="224" y2="182" stroke="#ff4ad8" stroke-width="1" opacity="0.6" filter="url(#gw)"/>';
+w+='<path d="M0,95 C60,35 120,35 180,95 C240,155 300,155 360,95 C420,35 480,35 540,95 C580,135 620,135 640,115" fill="none" stroke="#39d0d8" stroke-width="2.4" filter="url(#gw)"/>';
+w+='<path d="M0,150 L90,60 L180,150 L270,60 L360,150 L450,60 L540,150 L630,60 L640,72" fill="none" stroke="#ff4ad8" stroke-width="1.4" opacity="0.55" filter="url(#gw)"/>';
+w+='<path d="M0,95 L40,95 L40,45 L160,45 L160,145 L280,145 L280,45 L400,45 L400,145 L520,145 L520,45 L640,45" fill="none" stroke="#a06bff" stroke-width="1.2" opacity="0.45"/>';
+w+='</svg><div class="wave-info"><div class="chip">3 OSC</div><div class="chip">16 VOICE</div><div class="chip">POS 0.35</div><div class="chip">UNI 8</div></div></div>';
+w+='<div class="right"><div class="panel" style="padding:12px 14px"><div class="secrow"><div class="sec">OSCILLATOR</div><div class="sec">FILTER</div></div>';
+w+='<div class="knobs">'+osc+fx+'</div>';
+w+='<div class="combos"><div style="flex:1"><div class="lbl">FILTER TYPE</div><div class="menu-box" style="min-width:0">LP 24</div></div><div style="flex:1"><div class="lbl">SLOPE</div><div class="menu-box" style="min-width:0">12 dB/OCT</div></div></div></div>';
+w+='<div class="env panel"><div class="sec">ENVELOPE</div><div class="sliders">'+env+'</div></div></div></div></div>';
+document.getElementById("stack").innerHTML=w;
+</script></body></html>

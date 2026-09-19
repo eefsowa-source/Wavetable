@@ -66,9 +66,10 @@ private:
     std::atomic<int> activeWavetableSlot { 0 };
     std::atomic<const WavetableData*> audioWavetable { nullptr };
 
-    juce::AudioBuffer<float> delayBuffer;
-    int delayWritePosition = 0;
+    juce::dsp::DelayLine<float, juce::dsp::DelayLineInterpolationTypes::Lagrange3rd> delayLine { 96000 };
+    juce::dsp::LinkwitzRileyFilter<float> monoBassLowpass, monoBassHighpass;
     juce::dsp::Reverb reverb;
+    float reverbLfoPhase = 0.0f;
     OutputSafety outputSafety;
     juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> smoothedDelayTime;
     juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> smoothedDelayFeedback;

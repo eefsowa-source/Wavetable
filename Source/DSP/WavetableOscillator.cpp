@@ -134,6 +134,7 @@ float WavetableOscillator::process (const WavetableData& table) noexcept
     const int a = (int) frame;
     const int b = juce::jmin (a + 1, WavetableData::numTables - 1);
     const float frac = frame - (float) a;
+    const float smoothFrac = 0.5f * (1.0f - std::cos (juce::MathConstants<float>::pi * frac));
     // Mip selection depends only on the increment, so with static pitch it is
     // effectively a per-block computation; pitch modulation simply recomputes.
     if (increment != mipSelectionIncrement)
@@ -166,5 +167,5 @@ float WavetableOscillator::process (const WavetableData& table) noexcept
     const float vb = juce::jmap (mip.saferMix, detailedFrameB, saferFrameB);
     phase += increment;
     phase -= std::floor (phase);
-    return juce::jmap (frac, va, vb);
+    return juce::jmap (smoothFrac, va, vb);
 }

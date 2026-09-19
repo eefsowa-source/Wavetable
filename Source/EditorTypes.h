@@ -24,10 +24,12 @@ struct Skin
     bool glow;
 };
 
+inline constexpr int onyxPrismKnobStyle = 5;
+
 inline const std::array<Skin, 30>& skins()
 {
     static const std::array<Skin, 30> list = {{
-        { "Neon Han",        0xff101b2b, 0xff071018, 0xff0d2233, 0xff35516b, 0xff39d0d8, 0xffe14fd2, 0xffd8f8ff, 0xff91aabb, "Helvetica Neue", 30.0f, 0, 0, true  },
+        { "Neon Han",        0xff101b2b, 0xff071018, 0xff0d2233, 0xff35516b, 0xff39d0d8, 0xffe14fd2, 0xffd8f8ff, 0xff91aabb, "Helvetica Neue", 30.0f, onyxPrismKnobStyle, 0, true  },
         { "Han River Dawn",  0xff1b2333, 0xff0b0f18, 0xff182135, 0xff3c4a66, 0xfff2b25c, 0xff6fc7e8, 0xfff5ecdc, 0xff9aa6bd, "Avenir Next",    30.0f, 1, 1, false },
         { "Terminal Mint",   0xff06120c, 0xff020806, 0xff0a1a10, 0xff1d4030, 0xff4ce0a0, 0xffd0ff00, 0xffc8f5dd, 0xff6f9c85, "Menlo",          28.0f, 3, 2, false },
         { "Ultraviolet",     0xff150a2e, 0xff080418, 0xff1d1040, 0xff3a2a66, 0xffa06bff, 0xffff5ad9, 0xffeadcff, 0xff9a8cc0, "Helvetica Neue", 30.0f, 4, 3, true  },

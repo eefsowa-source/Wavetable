@@ -12,7 +12,7 @@ namespace
         "ampSustain", "ampRelease", "filterAttack", "filterDecay",
         "filterSustain", "filterRelease" };
     constexpr int wavetableStateVersion = 1;
-    constexpr int factoryPresetCount = 10;
+    constexpr int factoryPresetCount = 11;
 
     std::uint32_t splitMix32 (std::uint32_t value) noexcept
     {
@@ -26,6 +26,8 @@ namespace
     struct FactoryPreset
     {
         float osc1Pos = 0.0f, osc2Pos = 0.0f, osc3Pos = 0.0f;
+        float osc1Level = 0.75f, osc2Level = 0.75f, osc3Level = 0.75f;
+        float osc1Tune = 0.0f, osc2Tune = 7.0f, osc3Tune = -7.0f;
         int filterType = 0, filterSlope = 0;
         float cutoff = 12000.0f, resonance = 0.25f, filterDrive = 0.0f;
         float saturation = 0.15f, output = -6.0f;
@@ -51,6 +53,8 @@ namespace
 
             for (auto& preset : values)
             {
+                // Random bank keeps the factory fifth-stack character; only the
+                // curated entries below override tuning/levels explicitly.
                 preset.osc1Pos = next01();
                 preset.osc2Pos = next01();
                 preset.osc3Pos = next01();
@@ -70,6 +74,10 @@ namespace
                 preset.filterSustain = range (0.15f, 1.0f);
                 preset.filterRelease = time (0.05f, 2.5f);
             }
+            // Curated preset: the historical default state (root + fifth up +
+            // fifth down) preserved as a factory entry before the default
+            // tuning changed to unison pitch.
+            values[10].filterSlope = 3;
             return values;
         }();
         return presets;
@@ -87,7 +95,7 @@ static juce::AudioProcessorValueTreeState::ParameterLayout makeLayout()
     {
         const auto prefix = "osc" + juce::String (osc);
         l.add (std::make_unique<P> (prefix + "Level", prefix + " Level", 0.0f, 1.0f, 0.75f));
-        l.add (std::make_unique<P> (prefix + "Tune", prefix + " Tune", -24.0f, 24.0f, osc == 1 ? 0.0f : (osc == 2 ? 7.0f : -7.0f)));
+        l.add (std::make_unique<P> (prefix + "Tune", prefix + " Tune", -24.0f, 24.0f, 0.0f));
         l.add (std::make_unique<P> (prefix + "Unison", prefix + " Unison", 1.0f, 8.0f, 1.0f));
         l.add (std::make_unique<P> (prefix + "Spread", prefix + " Spread", 0.0f, 1.0f, 0.2f));
         l.add (std::make_unique<P> (prefix + "Detune", prefix + " Detune", 0.0f, 50.0f, 12.0f));
@@ -171,10 +179,16 @@ void HybridWavetableAudioProcessor::prepareToPlay (double sr, int block)
         if (auto* v = dynamic_cast<SynthVoice*> (synth.getVoice (i))) v->prepare (sr, block, &audioWavetable);
     if (auto* firstVoice = dynamic_cast<SynthVoice*> (synth.getVoice (0)))
         setLatencySamples (firstVoice->getSaturationOversamplingLatencySamples());
-    delayBuffer.setSize (2, juce::jmax (1, (int) std::ceil (sr * 1.5)), false, true, true);
-    delayBuffer.clear();
-    delayWritePosition = 0;
-    reverb.prepare ({ sr, (juce::uint32) juce::jmax (1, block), 2 });
+    juce::dsp::ProcessSpec spec { sr, (juce::uint32) juce::jmax (1, block), 2 };
+    delayLine.prepare (spec);
+    delayLine.reset();
+    monoBassLowpass.prepare (spec);
+    monoBassLowpass.setType (juce::dsp::LinkwitzRileyFilterType::lowpass);
+    monoBassLowpass.setCutoffFrequency (100.0f);
+    monoBassHighpass.prepare (spec);
+    monoBassHighpass.setType (juce::dsp::LinkwitzRileyFilterType::highpass);
+    monoBassHighpass.setCutoffFrequency (100.0f);
+    reverb.prepare (spec);
     reverb.reset();
     outputSafety.prepare (sr);
     arpeggiatedMidi.ensureSize (2048);
@@ -247,13 +261,31 @@ void HybridWavetableAudioProcessor::processBlock (juce::AudioBuffer<float>& b, j
     {
         smoothedMasterWidth.setTargetValue (juce::jlimit (0.0f, 2.0f,
                                                           parameters.getRawParameterValue ("masterWidth")->load()));
+        // Elliptical Sub-Bass Crossover: Keep low end (<100Hz) pure mono to prevent phase cancellation
+        juce::AudioBuffer<float> lowBand;
+        lowBand.makeCopyOf (b);
+        juce::dsp::AudioBlock<float> lowBlock (lowBand);
+        juce::dsp::AudioBlock<float> highBlock (b);
+        monoBassLowpass.process (juce::dsp::ProcessContextReplacing<float> (lowBlock));
+        monoBassHighpass.process (juce::dsp::ProcessContextReplacing<float> (highBlock));
+
         for (int i = 0; i < b.getNumSamples(); ++i)
         {
             const auto width = smoothedMasterWidth.getNextValue();
-            const auto mid = 0.5f * (b.getSample (0, i) + b.getSample (1, i));
-            const auto side = 0.5f * (b.getSample (0, i) - b.getSample (1, i)) * width;
-            b.setSample (0, i, mid + side);
-            b.setSample (1, i, mid - side);
+            if (width <= 0.0001f)
+            {
+                const auto monoSum = 0.5f * (b.getSample (0, i) + b.getSample (1, i) + lowBand.getSample (0, i) + lowBand.getSample (1, i));
+                b.setSample (0, i, monoSum);
+                b.setSample (1, i, monoSum);
+            }
+            else
+            {
+                const auto highMid = 0.5f * (b.getSample (0, i) + b.getSample (1, i));
+                const auto highSide = 0.5f * (b.getSample (0, i) - b.getSample (1, i)) * width;
+                const auto lowMono = 0.5f * (lowBand.getSample (0, i) + lowBand.getSample (1, i));
+                b.setSample (0, i, lowMono + highMid + highSide);
+                b.setSample (1, i, lowMono + highMid - highSide);
+            }
         }
     }
     processEffects (b);
@@ -282,11 +314,7 @@ void HybridWavetableAudioProcessor::releaseWavetableForAudio (int slot) noexcept
 
 void HybridWavetableAudioProcessor::processEffects (juce::AudioBuffer<float>& buffer) noexcept
 {
-    if (delayBuffer.getNumSamples() <= 0)
-        return;
-
     const int channels = juce::jmin (2, buffer.getNumChannels());
-    const int length = delayBuffer.getNumSamples();
     smoothedDelayTime.setTargetValue (juce::jlimit (0.03f, 1.5f,
                                                     parameters.getRawParameterValue ("delayTime")->load()));
     smoothedDelayFeedback.setTargetValue (juce::jlimit (0.0f, 0.9f,
@@ -298,25 +326,18 @@ void HybridWavetableAudioProcessor::processEffects (juce::AudioBuffer<float>& bu
     float reverbMix = 0.0f;
     for (int sample = 0; sample < buffer.getNumSamples(); ++sample)
     {
-        const double delaySamplesExact = smoothedDelayTime.getNextValue() * currentSampleRate;
-        const int delaySamplesFloor = juce::jlimit (1, length - 2, (int) std::floor (delaySamplesExact));
-        const float delaySamplesFrac = (float) (delaySamplesExact - std::floor (delaySamplesExact));
+        const float delaySamplesExact = (float) (smoothedDelayTime.getNextValue() * currentSampleRate);
         const float feedback = juce::jlimit (0.0f, 0.9f, smoothedDelayFeedback.getNextValue());
         const float mix = juce::jlimit (0.0f, 1.0f, smoothedDelayMix.getNextValue());
         reverbMix = juce::jlimit (0.0f, 1.0f, smoothedReverbMix.getNextValue());
         const auto gains = calculateDelayMixGains (mix);
-        const int readPos0 = (delayWritePosition + length - delaySamplesFloor) % length;
-        const int readPos1 = (readPos0 + 1) % length;
         for (int channel = 0; channel < channels; ++channel)
         {
             const float dry = buffer.getSample (channel, sample);
-            const float delayed0 = delayBuffer.getSample (channel, readPos0);
-            const float delayed1 = delayBuffer.getSample (channel, readPos1);
-            const float delayed = juce::jmap (delaySamplesFrac, delayed0, delayed1);
-            delayBuffer.setSample (channel, delayWritePosition, dry + delayed * feedback);
+            const float delayed = delayLine.popSample (channel, delaySamplesExact);
+            delayLine.pushSample (channel, dry + delayed * feedback);
             buffer.setSample (channel, sample, dry * gains.dry + delayed * gains.wet);
         }
-        delayWritePosition = (delayWritePosition + 1) % length;
     }
 
     if (channels == 2)
@@ -625,7 +646,7 @@ const juce::StringArray& HybridWavetableAudioProcessor::getFactoryPresetNames()
         "RND 01 // NEON PULSE", "RND 02 // CHROME PLUCK", "RND 03 // VOID GLASS",
         "RND 04 // LASER PAD", "RND 05 // ACID VECTOR", "RND 06 // NIGHT DRIVE",
         "RND 07 // STATIC BLOOM", "RND 08 // GHOST FM", "RND 09 // CIRCUIT BASS",
-        "RND 10 // QUANTUM AIR" };
+        "RND 10 // QUANTUM AIR", "STACK 11 // FIFTHS" };
     return names;
 }
 void HybridWavetableAudioProcessor::applyFactoryPreset (int index)
@@ -642,6 +663,12 @@ void HybridWavetableAudioProcessor::applyFactoryPreset (int index)
     setParameter ("osc1Pos", preset.osc1Pos);
     setParameter ("osc2Pos", preset.osc2Pos);
     setParameter ("osc3Pos", preset.osc3Pos);
+    setParameter ("osc1Level", preset.osc1Level);
+    setParameter ("osc2Level", preset.osc2Level);
+    setParameter ("osc3Level", preset.osc3Level);
+    setParameter ("osc1Tune", preset.osc1Tune);
+    setParameter ("osc2Tune", preset.osc2Tune);
+    setParameter ("osc3Tune", preset.osc3Tune);
     setParameter ("filterType", (float) preset.filterType);
     setParameter ("filterSlope", (float) preset.filterSlope);
     setParameter ("cutoff", preset.cutoff);

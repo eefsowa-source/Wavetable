@@ -55,3 +55,20 @@
 - Ableton Live 스모크 미실행 (REAPER는 완료).
 - Phase 2 잔여 항목: maxVoices 파라미터, fast-tanh 옵션, LFO 블록레이트 옵션(음질 메트릭 + 청취 필요).
 - xctrace 프로파일 캡처는 보류(벤치 중앙값으로 우선 추적).
+
+## 기본 프리셋 변경 (2026-09-17): 단음 기본값 + 5도 스택 보존
+
+기존 기본 상태(Osc 1 근음 + Osc 2 +7반음 + Osc 3 −7반음)가 한 노트에 여러 음으로 들리는 원인이어서 변경:
+
+1. 공장 기본값을 단음으로 변경: osc2Tune/osc3Tune 기본값 +7/−7 → 0 (레이아웃 [PluginProcessor.cpp](../../Source/PluginProcessor.cpp) makeLayout).
+2. 기존 5도 스택 상태는 11번째 팩토리 프리셋 "STACK 11 // FIFTHS"로 보존 (첫 10개 랜덤 뱅크는 종전 캐릭터 유지, 인덱스 10만 오버라이드).
+3. applyFactoryPreset이 osc1~3 Level/Tune을 명시 세팅하도록 확장 (기존엔 position/filter/env만 세팅).
+
+검증 (새 기본값 빌드, 설치 해시 da579bff… 일치):
+
+- ctest 9/9 통과 (프리셋 11개, 단음 기본 검증 추가).
+- pluginval VST3 strictness 10: SUCCESS. 로그: [pluginval-unisontune-default-strictness10.log](../../Build/quality-cpu/host-validation/pluginval-unisontune-default-strictness10.log)
+- auval (aumu Hwbl Eona): PASS.
+- EONQC 헤드리스 스모크: 5/6 통과, non_finite 전부 0. dense_chord_16 peak +4.40 dBFS(0 dBFS 초과) — 유니슨 피치로 세 오실레이터가 동위상 합산되며 기존 +3.05/+3.07 dB에서 1.3 dB 상승. 이것은 오실레이터 레벨 합산 구조상의 기존 동작 연속이며, 이번 변경으로 생긴 결함이 아니라 "기본 프리셋이 더 두꺼워진" 결과다. 리포트: [eonqc-report-unisontune-default.json](../../Build/quality-cpu/host-validation/eonqc-report-unisontune-default.json)
+
+참고: dense_chord_16의 0 dBFS 초과는 오실레이터 합산 이후 정규화/리미터가 없는 구조적 특성이다(출력 Safety 게인은 −6 dB 기본). OutputSafety 경로와 별도로 추적 중인 기존 관찰이다.

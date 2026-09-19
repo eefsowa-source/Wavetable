@@ -104,15 +104,18 @@ int main()
 
     ok &= check (processor.parameters.getParameter ("osc3Pos") != nullptr,
                  "third oscillator parameter is registered");
-    ok &= check (HybridWavetableAudioProcessor::getFactoryPresetNames().size() == 10,
-                 "ten factory presets are available");
+    ok &= check (HybridWavetableAudioProcessor::getFactoryPresetNames().size() == 11,
+                 "eleven factory presets are available");
+    ok &= check (processor.parameters.getParameter ("osc2Tune") != nullptr
+                     && std::abs (processor.parameters.getRawParameterValue ("osc2Tune")->load()) < 0.001f,
+                 "default tuning is unison pitch across oscillators");
     processor.applyFactoryPreset (6);
     ok &= check (processor.parameters.getRawParameterValue ("filterDrive")->load() >= -6.0f,
                  "factory preset applies filter drive");
     ok &= check (processor.parameters.getRawParameterValue ("osc3Pos")->load() >= 0.0f
                  && processor.parameters.getRawParameterValue ("osc3Pos")->load() <= 1.0f,
                  "factory preset applies third oscillator position");
-    for (int presetIndex = 0; presetIndex < 10; ++presetIndex)
+    for (int presetIndex = 0; presetIndex < 11; ++presetIndex)
     {
         processor.applyFactoryPreset (presetIndex);
         ok &= check (std::isfinite (processor.parameters.getRawParameterValue ("cutoff")->load()),

@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>SEOUL DSP - UI Depth Candidates</title>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+body { background:#0a0a0e; color:#d8f8ff; font-family:-apple-system,'Helvetica Neue',sans-serif; padding:32px; }
+h1 { font-size:22px; letter-spacing:2px; margin-bottom:6px; }
+.sub { color:#91aabb; font-size:13px; margin-bottom:28px; }
+.grid { display:grid; grid-template-columns:repeat(2, 1fr); gap:24px; max-width:1200px; }
+.card { border-radius:14px; overflow:hidden; border:1px solid #223; }
+.head { padding:10px 16px; background:#111318; }
+.head .no { font-size:11px; color:#667; letter-spacing:1px; }
+.head .name { font-size:14px; font-weight:700; letter-spacing:1px; }
+.head .desc { font-size:11px; color:#8899aa; margin-left:10px; }
+.stage { padding:22px; min-height:230px; position:relative; background:linear-gradient(160deg, var(--bgTop), var(--bgBottom)); }
+.panel { border-radius:10px; padding:16px 18px; width:100%; height:180px; position:relative; background:var(--panel); }
+.row { display:flex; gap:18px; align-items:flex-start; }
+.knob { width:56px; height:56px; border-radius:50%; position:relative; }
+.knob .cap { position:absolute; inset:6px; border-radius:50%; }
+.display { flex:1; height:44px; border-radius:6px; margin-top:4px; font-family:Menlo,monospace; font-size:11px; padding:6px 10px; color:var(--accent); letter-spacing:2px; }
+.label { font-size:9px; letter-spacing:2px; color:var(--dim); margin-bottom:6px; }
+.title { font-size:16px; font-weight:800; letter-spacing:1px; color:var(--text); margin-bottom:2px; }
+.accentbar { height:3px; width:64px; border-radius:2px; margin-top:8px; background:linear-gradient(90deg, var(--accent), var(--accentAlt)); }
+.c1 .panel { background:rgba(255,255,255,0.055); backdrop-filter:blur(2px); border:1px solid rgba(255,255,255,0.14); box-shadow:0 18px 40px rgba(0,0,0,0.55), inset 0 1px 0 rgba(255,255,255,0.22), inset 0 -1px 0 rgba(0,0,0,0.3); }
+.c1 .panel::before { content:''; position:absolute; inset:0; border-radius:10px; background:linear-gradient(115deg, rgba(255,255,255,0.10) 0%, rgba(255,255,255,0.02) 28%, transparent 45%); pointer-events:none; }
+.c1 .knob .cap { background:radial-gradient(circle at 32% 28%, #3b5871, #16303f 68%); box-shadow:0 6px 14px rgba(0,0,0,0.6), inset 0 1px 1px rgba(255,255,255,0.25); }
+.c1 .display { background:rgba(0,0,0,0.45); border:1px solid rgba(255,255,255,0.08); box-shadow:inset 0 2px 8px rgba(0,0,0,0.7); }
+.c2 .panel { background:linear-gradient(145deg,#142430,#0d1a26); box-shadow:9px 9px 22px rgba(0,0,0,0.55), -7px -7px 18px rgba(80,140,190,0.09); }
+.c2 .knob { box-shadow:6px 6px 12px rgba(0,0,0,0.55), -4px -4px 10px rgba(90,150,200,0.10); }
+.c2 .knob .cap { background:radial-gradient(circle at 35% 30%, #1d3850, #101f2c 70%); box-shadow:inset 3px 3px 7px rgba(0,0,0,0.6), inset -2px -2px 6px rgba(100,160,210,0.12); }
+.c2 .display { background:#0d1926; box-shadow:inset 4px 4px 9px rgba(0,0,0,0.6), inset -3px -3px 8px rgba(90,150,200,0.08); }
+.c3 .panel { background:linear-gradient(180deg,#243443 0%, #16232e 55%, #101a22 100%); box-shadow:0 14px 30px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.16), inset 0 -2px 6px rgba(0,0,0,0.5); border:1px solid #06090c; }
+.c3 .panel::after { content:''; position:absolute; inset:0; border-radius:10px; pointer-events:none; background:repeating-linear-gradient(90deg, rgba(255,255,255,0.022) 0 1px, transparent 1px 3px); }
+.c3 .knob .cap { background:conic-gradient(from 210deg, #2c4256, #48627a 12%, #223647 25%, #46607a 40%, #1e3040 55%, #4a647e 70%, #24384a 85%, #2c4256); box-shadow:0 5px 12px rgba(0,0,0,0.65), inset 0 2px 2px rgba(255,255,255,0.3), inset 0 -3px 5px rgba(0,0,0,0.5); }
+.c3 .display { background:linear-gradient(180deg,#05080a,#0a1014); border:1px solid #000; box-shadow:inset 0 3px 10px rgba(0,0,0,0.9), 0 1px 0 rgba(255,255,255,0.06); }
+.c4 .panel { background:#0c1c2c; box-shadow:0 24px 50px rgba(0,0,0,0.65); border:1px solid #050a10; }
+.c4 .panel::before { content:''; position:absolute; left:14px; right:14px; top:-8px; height:20px; border-radius:10px 10px 0 0; background:#122538; box-shadow:0 -6px 18px rgba(0,0,0,0.35); z-index:-1; }
+.c4 .knob { background:#0a1826; border-radius:50%; box-shadow:0 10px 20px rgba(0,0,0,0.6), 0 2px 0 rgba(255,255,255,0.05); }
+.c4 .knob .cap { background:linear-gradient(145deg,#1c3a52,#0e2033); box-shadow:inset 0 1px 1px rgba(120,200,255,0.25); border:1px solid #050b12; }
+.c4 .display { background:#050d16; border:1px solid #02060a; box-shadow:0 6px 16px rgba(0,0,0,0.5), inset 0 1px 0 rgba(90,180,255,0.08); }
+.c5 .panel { background:linear-gradient(180deg,#1c2f42 0%, #0e1c2a 100%); box-shadow:0 16px 36px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.2); }
+.c5 .knob .cap { background:linear-gradient(160deg,#e8f4ff 0%, #9db8cc 22%, #48647c 46%, #8aa4b8 62%, #2c4254 82%, #c8dcec 100%); box-shadow:0 6px 14px rgba(0,0,0,0.55), inset 0 -2px 4px rgba(255,255,255,0.35), inset 0 2px 3px rgba(255,255,255,0.6); }
+.c5 .knob .cap::after { content:''; position:absolute; left:14%; top:6%; width:72%; height:38%; border-radius:50% 50% 40% 40%; background:linear-gradient(180deg, rgba(255,255,255,0.75), rgba(255,255,255,0.05)); }
+.c5 .display { background:linear-gradient(180deg,#000 0%, #04121c 100%); box-shadow:inset 0 2px 6px rgba(0,0,0,0.9), 0 1px 0 rgba(255,255,255,0.15); position:relative; overflow:hidden; }
+.c5 .display::after { content:''; position:absolute; inset:0; background:linear-gradient(105deg, transparent 40%, rgba(255,255,255,0.10) 48%, transparent 56%); }
+.c6 .panel { background:radial-gradient(120% 100% at 50% 30%, #10202e 0%, #060d14 78%); box-shadow:inset 0 0 60px rgba(0,0,0,0.75), 0 12px 30px rgba(0,0,0,0.55); border-radius:16px; }
+.c6 .panel::after { content:''; position:absolute; inset:0; border-radius:16px; pointer-events:none; background:radial-gradient(140% 130% at 50% 50%, transparent 62%, rgba(0,0,0,0.5) 100%); }
+.c6 .knob .cap { background:radial-gradient(circle at 40% 32%, #1c3648, #0a1620 72%); box-shadow:0 0 14px rgba(57,208,216,0.35), 0 4px 10px rgba(0,0,0,0.6); }
+.c6 .display { background:#020608; color:#39d0d8; text-shadow:0 0 6px rgba(57,208,216,0.9), 0 0 18px rgba(57,208,216,0.45); box-shadow:inset 0 0 18px rgba(57,208,216,0.12), inset 0 0 4px rgba(0,0,0,0.9); }
+.c7 .panel { background:#e8e2d5; box-shadow:0 12px 28px rgba(0,0,0,0.5), inset 0 1px 0 #fff; }
+.c7 .title, .c7 .label { color:#4a4438; }
+.c7 .title { text-shadow:0 1px 0 rgba(255,255,255,0.8); }
+.c7 .label { text-shadow:0 1px 0 rgba(255,255,255,0.6); }
+.c7 .knob { box-shadow:4px 5px 9px rgba(90,80,60,0.35), -3px -3px 7px rgba(255,255,255,0.85); }
+.c7 .knob .cap { background:radial-gradient(circle at 35% 30%, #f4efe4, #d8d0be 75%); box-shadow:inset 2px 3px 5px rgba(90,80,60,0.25), inset -2px -2px 4px rgba(255,255,255,0.9); }
+.c7 .display { background:#ddd6c6; color:#8a5a30; box-shadow:inset 3px 3px 6px rgba(90,80,60,0.3), inset -2px -2px 5px rgba(255,255,255,0.8); }
+.c7 .accentbar { background:linear-gradient(90deg,#c07830,#a85828); }
+.c8 .panel { background:linear-gradient(180deg,#0e1822,#081018); box-shadow:0 12px 28px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.07); }
+.c8 .knob .cap { background:radial-gradient(circle at 34% 28%, #22384a, #0c1826 70%); box-shadow:0 5px 11px rgba(0,0,0,0.65), inset 0 1px 1px rgba(140,220,255,0.2); }
+.c8 .knob .cap::after { content:''; position:absolute; left:50%; top:7px; width:5px; height:12px; border-radius:3px; transform:translateX(-50%); background:var(--accent); box-shadow:0 0 8px var(--accent), 0 0 16px var(--accent); }
+.c8 .display { background:#020507; border-radius:6px; box-shadow:inset 0 3px 9px rgba(0,0,0,0.95), 0 1px 0 rgba(255,255,255,0.08); }
+.c8 .chip { display:inline-block; padding:2px 6px; margin-right:6px; background:#0a1a14; color:#4ce0a0; border-radius:3px; box-shadow:0 0 7px rgba(76,224,160,0.7), inset 0 0 3px rgba(0,0,0,0.9); text-shadow:0 0 5px rgba(76,224,160,0.9); }
+.c9 .panel { background:linear-gradient(165deg,#3a3f46 0%, #23282e 40%, #171b20 100%); border-radius:12px; border:1px solid #0a0d10; box-shadow:0 16px 34px rgba(0,0,0,0.65), inset 0 2px 2px rgba(255,255,255,0.12), inset 0 -3px 8px rgba(0,0,0,0.55); }
+.c9 .panel::before, .c9 .panel::after { content:''; position:absolute; top:10px; width:7px; height:7px; border-radius:50%; background:radial-gradient(circle at 35% 30%, #7a828c, #2c3238 70%); box-shadow:inset 0 -1px 2px rgba(0,0,0,0.8), 0 1px 1px rgba(255,255,255,0.15); }
+.c9 .panel::before { left:10px; } .c9 .panel::after { right:10px; }
+.c9 .knob .cap { background:radial-gradient(circle at 36% 30%, #2c3138, #12161a 75%); border:2px solid #3c424a; box-shadow:0 6px 12px rgba(0,0,0,0.7), inset 0 2px 2px rgba(255,255,255,0.18), inset 0 -3px 5px rgba(0,0,0,0.6); }
+.c9 .knob .cap::after { content:''; position:absolute; left:50%; top:6px; width:4px; height:13px; transform:translateX(-50%); border-radius:2px; background:var(--accentAlt); box-shadow:0 0 6px rgba(225,79,210,0.6); }
+.c9 .display { background:linear-gradient(180deg,#04070a,#0a0e12); border:2px solid #10141a; box-shadow:inset 0 3px 9px rgba(0,0,0,0.9), 0 1px 0 rgba(255,255,255,0.1); }
+.c10 .panel { background:linear-gradient(135deg,#181228 0%, #0e0a1c 55%, #1c1030 100%); box-shadow:0 16px 36px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.14); overflow:hidden; }
+.c10 .panel::before { content:''; position:absolute; inset:-40%; background:conic-gradient(from 0deg, rgba(160,107,255,0.16), rgba(74,232,240,0.13), rgba(255,90,217,0.16), rgba(160,107,255,0.16)); animation:spin 9s linear infinite; pointer-events:none; }
+.c10 .panel::after { content:''; position:absolute; inset:0; border-radius:10px; pointer-events:none; background:linear-gradient(120deg, rgba(255,255,255,0.13) 0%, transparent 30%, transparent 68%, rgba(255,255,255,0.08) 100%); }
+@keyframes spin { to { transform:rotate(360deg); } }
+.c10 .knob { position:relative; z-index:2; }
+.c10 .knob .cap { background:radial-gradient(circle at 34% 28%, #2c1f4a, #120c22 72%); border:1px solid rgba(200,150,255,0.4); box-shadow:0 0 16px rgba(160,107,255,0.4), 0 5px 12px rgba(0,0,0,0.6), inset 0 1px 1px rgba(255,200,255,0.3); }
+.c10 .display { position:relative; z-index:2; background:rgba(0,0,0,0.5); color:#e84af0; text-shadow:0 0 8px rgba(232,74,240,0.8); border:1px solid rgba(232,74,240,0.35); box-shadow:0 0 14px rgba(232,74,240,0.2), inset 0 0 12px rgba(232,74,240,0.08); }
+</style>
+</head>
+<body>
+<h1>SEOUL DSP &mdash; UI Depth Candidates (10)</h1>
+<div class="sub">Depth rendering layers applied on top of the existing 90 types. Each candidate applies the same rules to panel, knobs, and displays.</div>
+<div class="grid" id="grid"></div>
+<script id="data" type="application/json">[{"c":"c1","no":"01","name":"GLASS DEPTH","desc":"frosted glass panel, drop shadow, top highlight","chip":false},{"c":"c2","no":"02","name":"NEUMORPH","desc":"soft emboss with single-hue shadows","chip":false},{"c":"c3","no":"03","name":"MACHINED METAL","desc":"brushed metal texture with beveled edges","chip":false},{"c":"c4","no":"04","name":"DEEP STACK","desc":"multi-layer floating panels peeking behind","chip":false},{"c":"c5","no":"05","name":"CHROME GLOSS","desc":"chrome knobs with glass reflection sweep","chip":false},{"c":"c6","no":"06","name":"CRT PHOSPHOR","desc":"curved-screen vignette with phosphor bloom","chip":false},{"c":"c7","no":"07","name":"LETTERPRESS","desc":"light paper palette with pressed print shading","chip":false},{"c":"c8","no":"08","name":"LED RECESSED","desc":"recessed LED indicators with glow","chip":true},{"c":"c9","no":"09","name":"ANALOGUE HW","desc":"screw heads and thick bevels, hardware rack feel","chip":false},{"c":"c10","no":"10","name":"HOLOGRAPHIC","desc":"rotating holographic sheen with prism edge glow","chip":false}]</script>
+<script>
+var P = { bgTop:'#101b2b', bgBottom:'#071018', panel:'#0d2233', accent:'#39d0d8', accentAlt:'#e14fd2', text:'#d8f8ff', dim:'#91aabb' };
+var candidates = JSON.parse(document.getElementById('data').textContent);
+document.getElementById('grid').innerHTML = candidates.map(function(x) {
+  var display = x.chip ? '<span class="chip">NEON</span><span class="chip">HAN</span>' : 'NEON HAN &middot; POS 0.35 &middot; UNI 8';
+  return '<div class="card"><div class="head"><span class="no">' + x.no + '</span> <span class="name">' + x.name + '</span><span class="desc">' + x.desc + '</span></div>' +
+    '<div class="stage ' + x.c + '" style="--bgTop:' + P.bgTop + ';--bgBottom:' + P.bgBottom + ';--panel:' + P.panel + ';--accent:' + P.accent + ';--accentAlt:' + P.accentAlt + ';--text:' + P.text + ';--dim:' + P.dim + ';">' +
+    '<div class="panel"><div class="label">POLYPHONIC WAVETABLE SYNTHESIZER</div><div class="title">SEOUL DSP</div><div class="accentbar"></div>' +
+    '<div class="row" style="margin-top:16px;">' +
+    '<div><div class="label">CUTOFF</div><div class="knob"><div class="cap"></div></div></div>' +
+    '<div><div class="label">RESONANCE</div><div class="knob"><div class="cap"></div></div></div>' +
+    '<div style="flex:1"><div class="label">WAVETABLE</div><div class="display">' + display + '</div></div>' +
+    '</div></div></div></div>';
+});
+</script>
+</body>
+</html>

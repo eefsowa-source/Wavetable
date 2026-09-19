@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head><meta charset="UTF-8"><title>SEOUL DSP - Knob Detail Options</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#02040a;color:#d8f8ff;font-family:-apple-system,'Apple SD Gothic Neo',sans-serif;padding:30px 0 50px;display:flex;flex-direction:column;gap:14px;align-items:center}
+h1{font-size:16px;letter-spacing:3px;color:#8fa8bc;font-weight:600}
+.sub{font-size:12px;color:#5f7488;letter-spacing:1px;margin-bottom:8px}
+.row{display:flex;gap:26px;flex-wrap:wrap;justify-content:center}
+.card{width:230px;display:flex;flex-direction:column;align-items:center;gap:12px}
+.dbox{width:230px;height:210px;display:flex;align-items:center;justify-content:center;border-radius:12px;background:linear-gradient(165deg,#0b1626,#050a14);border:1px solid #16283c}
+.zoom{transform:scale(2.7);transform-origin:center}
+.dlabel{font-size:11px;letter-spacing:1.5px;color:#cfe8f5;font-weight:700;text-align:center;line-height:1.5}
+.dlabel small{display:block;font-size:9.5px;color:#7f95a8;font-weight:400;letter-spacing:.5px;margin-top:3px}
+/* 공통: 현재안 A0 구조 재사용 + 변형 오버라이드 */
+.kunit{position:relative;width:56px;height:56px;filter:drop-shadow(0 9px 12px rgba(0,0,0,.55))}
+.kticks{position:absolute;inset:0;border-radius:50%;background:repeating-conic-gradient(from -44deg,rgba(165,205,235,.34) 0deg .9deg,transparent .9deg 13.5deg);-webkit-mask:radial-gradient(farthest-side,transparent calc(100% - 7px),#000 calc(100% - 6px));mask:radial-gradient(farthest-side,transparent calc(100% - 7px),#000 calc(100% - 6px));opacity:.75}
+.kticks.dense{background:repeating-conic-gradient(from -44deg,rgba(165,205,235,.4) 0deg .55deg,transparent .55deg 5.6deg);opacity:.65}
+.kticks.off{display:none}
+.karc{position:absolute;inset:0;transform:rotate(135deg)}
+.karc svg{position:absolute;inset:0}
+.tr{fill:none;stroke:rgba(255,255,255,.09);stroke-width:2.4}
+.vl{fill:none;stroke:var(--ac,#39d0d8);stroke-width:2.4;stroke-linecap:round;filter:drop-shadow(0 0 4px var(--ac,#39d0d8))}
+.kbezel{position:absolute;inset:4.5px;border-radius:50%;background:conic-gradient(from 210deg,#22303e,#51708c 10%,#182634 24%,#5c7a96 40%,#1c2a38 56%,#56748e 72%,#14202c 86%,#22303e);box-shadow:0 8px 16px rgba(0,0,0,.6),inset 0 1px 1px rgba(255,255,255,.4),inset 0 -2px 4px rgba(0,0,0,.65)}
+.kbezel.dark{background:conic-gradient(from 210deg,#131c26,#31414f 10%,#0e1620 24%,#3a4a58 40%,#101a24 56%,#364654 72%,#0c141d 86%,#131c26);box-shadow:0 8px 16px rgba(0,0,0,.6),inset 0 1px 1px rgba(190,220,250,.25),inset 0 -2px 4px rgba(0,0,0,.7)}
+.kbezel.magenta{background:conic-gradient(from 210deg,#26202e,#6a5580 10%,#1a1522 24%,#7c6494 40%,#1e1826 56%,#74607e 72%,#161219 86%,#26202e);box-shadow:0 8px 16px rgba(0,0,0,.6),inset 0 1px 1px rgba(240,200,255,.35),inset 0 -2px 4px rgba(0,0,0,.65)}
+.kcap{position:absolute;inset:7.5px;border-radius:50%;background:radial-gradient(circle at 32% 26%,#33506a 0%,#1b3348 45%,#0e1d2b 78%,#0a1520 100%);box-shadow:inset 0 2px 3px rgba(185,225,255,.3),inset 0 -4px 8px rgba(0,0,0,.65),0 2px 5px rgba(0,0,0,.5)}
+.kcap::before{content:"";position:absolute;inset:5px;border-radius:50%;border:1px solid rgba(150,200,240,.17);box-shadow:inset 0 1px 2px rgba(0,0,0,.55)}
+.kspec{position:absolute;inset:0;border-radius:50%;background:linear-gradient(115deg,rgba(255,255,255,.14) 0%,rgba(255,255,255,.03) 32%,transparent 46%);pointer-events:none}
+.kind{position:absolute;inset:0;border-radius:50%;transform:rotate(var(--rot))}
+.kind::before{content:"";position:absolute;top:7px;left:calc(50% - 1.5px);width:3px;height:14px;border-radius:2px;background:linear-gradient(180deg,#eaffff,var(--ac,#39d0d8));box-shadow:0 0 8px var(--ac,#39d0d8),0 0 18px var(--ac,#39d0d8)}
+.kind::after{content:"";position:absolute;top:4.5px;left:calc(50% - 2.5px);width:5px;height:5px;border-radius:50%;background:#fff;box-shadow:0 0 6px #fff,0 0 13px var(--ac,#39d0d8)}
+.kind.slim::before{width:2px;top:8px;height:13px;box-shadow:0 0 5px var(--ac,#39d0d8)}
+.kind.slim::after{display:none}
+.kval{font-family:Menlo,monospace;font-size:8px;letter-spacing:.5px;color:var(--ac,#39d0d8);opacity:.9}
+/* 조합별 강조색 */
+.mg{--ac:#ff4ad8}
+</style></head>
+<body>
+<h1>SEOUL DSP &mdash; KNOB DETAIL OPTIONS (64%)</h1>
+<div class="sub">위 5개가 같은 노브를 다르게 조정한 모습입니다. 숫자는 제안 번호.</div>
+<div class="row" id="row"></div>
+<script>
+function unit(val,cls){
+ var rot=(-135+val*2.7).toFixed(1);
+ var dash=(val*0.75).toFixed(1);
+ var u='<div class="kunit '+(cls||"")+'">';
+ if(!/off/.test(cls||""))u+='<div class="kticks'+(/dense/.test(cls)?" dense":"")+'"></div>';
+ u+='<div class="karc"><svg viewBox="0 0 56 56"><circle class="tr" cx="28" cy="28" r="25.5" pathLength="100"/><circle class="vl" cx="28" cy="28" r="25.5" pathLength="100" stroke-dasharray="'+dash+' 100"/></svg></div>';
+ u+='<div class="kbezel'+(/dark/.test(cls)?" dark":/magenta/.test(cls)?" magenta":"")+'"></div>';
+ u+='<div class="kcap"><div class="kspec"></div><div class="kind'+(/slim/.test(cls)?" slim":"")+'" style="--rot:'+rot+'deg"></div></div>';
+ return u+'</div>';
+}
+var OPTS=[
+ {n:"A0 현재안",d:"틱 27개 + 스틸 베젤 + 시안 아크 + 주얼 점",cls:"",v:64},
+ {n:"A1 틱 제거",d:"깔끔·미니멀. 아크와 베젤만 남긴 절제 버전",cls:"off",v:64},
+ {n:"A2 틱 촘촘(64개)",d:"미세 눈금 촘촘 → 정밀 계기 느낌, 더 하이엔드",cls:"dense",v:64},
+ {n:"A3 베젤 다크톤",d:"베젤을 패널과 비슷한 어두운 강철로 → 노브가 덜 튀고 통일감",cls:"dark",v:64},
+ {n:"A4 아크 마젠타",d:"아크·주얼을 마젠타로 → 웨이브폼 마젠타 라인과 연결, 대비 강조",cls:"mg",v:64}
+];
+document.getElementById("row").innerHTML=OPTS.map(function(o){
+ return '<div class="card '+o.cls+'"><div class="dbox"><div class="zoom">'+unit(o.v,o.cls)+'</div></div><div class="dlabel">'+o.n+'<small>'+o.d+'</small></div></div>';
+}).join("");
+</script></body></html>

@@ -272,7 +272,12 @@ void SynthVoice::renderNextBlock (juce::AudioBuffer<float>& output, int start, i
         {
             auto* channelData = oversampledBlock.getChannelPointer (ch);
             for (size_t n = 0; n < oversampledBlock.getNumSamples(); ++n)
-                channelData[n] = std::tanh (channelData[n]);
+            {
+                const float x = channelData[n];
+                // Asymmetric soft-clipping with subtle second & third harmonics
+                const float xOffset = x + 0.12f * x * x;
+                channelData[n] = std::tanh (xOffset) - 0.118f * std::tanh (0.12f * x * x);
+            }
         }
         saturationOversampling.processSamplesDown (preSatSub);
     }
