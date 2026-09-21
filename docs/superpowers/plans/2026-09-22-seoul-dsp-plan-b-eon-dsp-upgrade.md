@@ -4,7 +4,7 @@
 > 체크박스(`- [ ]`)는 실행 시점에 갱신한다.
 
 **작성일:** 2026-09-22  
-**상태:** PROPOSED (미실행)  
+**상태:** IN PROGRESS (Task 1 완료, 2026-09-22)  
 **대상 DSP 코어:** `eon_dsp` rev `c8e71f3` (canonical: `~/Desktop/EON LLM wiki/EON Audio Plugin/eon_dsp`)  
 **대상 제품:** SEOUL DSP (JUCE 8.0.14 wavetable synth, `HybridWavetable`)
 
@@ -64,14 +64,33 @@ transformer).
 - Modify: `CMakeLists.txt` (`add_library(eon_dsp INTERFACE)` + `add_library(eon::dsp ALIAS eon_dsp)` + include dir)
 - Create: `Tests/EonDspContractTests.cpp` (사본이 스스로 컴파일/동작함을 고정하는 최소 계약 테스트)
 
-- [ ] **Step 1 (RED):** 빈 TU에서 `#include "Dsp/Adaa.h"` + `eon::ADAA2` 인스턴스화 -> CMake 타깃 없음으로 실패 확인.
-- [ ] **Step 2:** 헤더/REVISION/provenance 복사, CMake 타깃 추가.
-- [ ] **Step 3 (GREEN):** `EonDspContract` 테스트가 컴파일/실행되고 `ctest -R EonDspContract` PASS.
-      계약 범위: `ADAA1/ADAA2`의 근사-샘플 fallback 유한성, `HbTaps*` 부호 대칭/중심 0.5,
-      `Ladder4`/`SvfTPT` 1 kHz 이득, `DCBlocker` DC 수렴, `Rng` 시드 결정성.
-- [ ] **Step 4:** 기존 9개 테스트가 여전히 9/9 PASS임을 확인(링크/ODR 회귀 방지). 커밋.
+- [x] **Step 1 (RED):** 벤더링 전 `clang++ -fsyntax-only -Ithird_party/eon_dsp` ->
+      `fatal error: 'Dsp/Adaa.h' file not found` 확인.
+- [x] **Step 2:** `Dsp/` 11 헤더 + `REVISION` + `PROVENANCE.md` 복사, CMake에 `eon::dsp`
+      INTERFACE 타깃 추가. `diff -rq`로 원본과 byte-identical 확인. submodule
+      (`third_party/simde`, `sst-*`)은 어떤 헤더도 참조하지 않아 복사하지 않았다.
+- [x] **Step 3 (GREEN):** `ctest -R EonDspContract` PASS (Release, Debug 각각).
+      실제 계약 범위: `ADAA2` 반복노드 해석해 + nextafter 근접 샘플 유한성/상한,
+      `tanhF1` 대인수 안정성·우함수, `HbTaps71/47/35` 대칭 + `2*sum(hE)==1` + `p` 값,
+      oversampler DC 이득과 block 분할 독립성(stages 1..3), `Ladder4` 무포화 DC 이득 1 /
+      포화 시 tanh(1) 정착 / 고공진 유한·유계 / 1 decade 20 dB 이상 감쇠, `SvfTPT`
+      lp·hp·bp DC 응답과 per-sample cutoff 변조 유한성, `DCBlocker` DC 제거 + 1 kHz
+      0.2% 통과 + 무효 샘플레이트 fail-closed, `ftz`/`ScopedDenormalsOff`,
+      `Rng` 시드 결정성, `lambertW0`/`newtonScalar`/`solveDense`(특이행렬 거부 포함),
+      회로 프리미티브(InductorResonator, AnalogAir, ClassAStage, TriodeStage,
+      JilesAtherton, WdfDiode/WdfDiodePair) 유한성·유계, `measure::binMag`/`thdPercent`.
+- [x] **Step 4:** 전체 CTest **10/10 PASS** (기존 9 + EonDspContract), Release와 Debug 양쪽.
+      플러그인/툴 타깃 전부 재빌드 성공(ODR·링크 회귀 없음).
 
-**증거:** 프로브 컴파일 로그, `ctest` 요약, REVISION 해시, provenance 노트 커밋.
+**증거:** RED 컴파일 오류 로그, `diff -rq` byte-identical, `shasum -a 256` 11개 해시
+(`PROVENANCE.md`에 기록), `ctest` 요약, `REVISION` = `c8e71f3c826e43f574804ecf63edaea1f34120ad`.
+
+**실행 기록 (2026-09-22):** 첫 GREEN 시도에서 `measure::thdPercent` 순수 사인 판정이
+실패했다. 원인은 측정 잔차가 아니라 측정 설계였다: 8192 샘플에서 1000 Hz는 정수 주기가
+아니어서 사각 윈도우 누설이 하모닉 빈으로 들어왔고, "THD < 0.01%"가 신호 특성이 아닌
+윈도우 특성을 재고 있었다. 기준 신호를 정확히 1초(1000 주기)로 맞춰 누설을 제거한 뒤
+임계를 1e-6으로 조인 상태로 통과시켰다. 이 기준은 Task 2의 alias proxy 측정에도
+그대로 적용해야 한다.
 
 ### Task 2 — 등급별 alias proxy 하네스 (선행 필수)
 
@@ -222,4 +241,3 @@ half-band FIR polyphase(71/47/35 taps, stopband -113/-102/-90 dB)와 ADAA를 조
    유지할지. 기본안: `6/12/18/24`로 정정.
 3. Task 5 아날로그 컬러 단계를 이번 Plan B 범위에 포함할지, 별도 Plan으로 미룰지.
    기본안: Task 3/4 완료 후 조건부 진행.
-

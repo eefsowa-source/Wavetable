@@ -5,6 +5,15 @@ if (APPLE AND NOT CMAKE_OSX_ARCHITECTURES)
   set(CMAKE_OSX_ARCHITECTURES "arm64;x86_64" CACHE STRING "Universal macOS build" FORCE)
 endif()
 
+# Vendored header-only DSP core (ADAA, half-band oversampling, ZDF/WDF filters,
+# solvers, circuit stages). See third_party/eon_dsp/PROVENANCE.md for the pinned
+# source revision and the external-dependency audit. Deliberately JUCE-free so
+# the same headers can be unit tested and reused outside JUCE.
+add_library(eon_dsp INTERFACE)
+add_library(eon::dsp ALIAS eon_dsp)
+target_include_directories(eon_dsp INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/third_party/eon_dsp)
+target_compile_features(eon_dsp INTERFACE cxx_std_20)
+
 include(FetchContent)
 FetchContent_Declare(
   JUCE
@@ -215,4 +224,14 @@ if (BUILD_TESTING)
     juce::juce_audio_utils juce::juce_audio_processors juce::juce_dsp juce::juce_gui_extra)
   set_target_properties(ProcessorSmokeTests PROPERTIES MACOSX_DEPLOYMENT_TARGET "12.0")
   add_test(NAME ProcessorSmoke COMMAND ProcessorSmokeTests)
+
+  # Vendored-copy guard: proves the checked-in third_party/eon_dsp headers
+  # compile in this toolchain and still honour the contracts the Plan B
+  # sound-quality upgrade depends on. Needs no JUCE.
+  add_executable(EonDspContractTests Tests/EonDspContractTests.cpp)
+  target_link_libraries(EonDspContractTests PRIVATE eon::dsp)
+  target_compile_options(EonDspContractTests PRIVATE -Wall -Wextra)
+  set_target_properties(EonDspContractTests PROPERTIES
+    MACOSX_DEPLOYMENT_TARGET "12.0")
+  add_test(NAME EonDspContract COMMAND EonDspContractTests)
 endif()
