@@ -13,15 +13,17 @@ The worktree contains the existing UI depth work and the DSP quality changes. Do
 - JUCE `DelayLine<Lagrange3rd>` replacing the manual delay ring buffer;
 - 100 Hz Linkwitz-Riley low/high crossover for mono-safe sub bass.
 
-The current CTest suite passes 9/9. This is a WIP checkpoint, not a final host or listening acceptance.
+The current CTest suite passes 9/9. The follow-up realtime safety fixes are in commit `8c4f467`; this is still not final host or listening acceptance.
 
-## First fixes required
+## First fixes completed
 
-1. Remove the `lowBand.makeCopyOf (b)` allocation from `processBlock()`. Preallocate low/high scratch buffers in `prepareToPlay()` and reuse them in the callback.
-2. Set the DelayLine maximum length from `ceil (sampleRate * 1.5)` during `prepareToPlay()`. The current constructor value of 96000 is insufficient for 1.5 seconds at 96 kHz and above.
-3. Reset DelayLine and crossover state in `reset()`.
-4. Preserve exact mono-collapse behavior at `masterWidth == 0`; apply the low mono/high stereo split only for non-zero width.
-5. Remove unused `reverbLfoPhase`, or implement a measured, allocation-free reverb modulation stage. Do not claim reverb diffusion unless it is present in the audio path.
+1. `processBlock()` now reuses a preallocated low-band scratch buffer.
+2. DelayLine capacity is set from `ceil (sampleRate * 1.5) + 4` during `prepareToPlay()`.
+3. DelayLine, crossover, reverb, scratch, and smoother initialization are reset safely.
+4. `masterWidth == 0` mono behavior remains covered by smoke tests.
+5. The unused reverb LFO field was removed; reverb diffusion remains unimplemented and must not be claimed.
+
+The next owner should review the implementation and add any stronger realtime allocation instrumentation before final release.
 
 ## DSP verification
 
@@ -37,7 +39,7 @@ No allocation, lock, file I/O, or UI work is allowed on the audio thread.
 
 ## CPU and host gates
 
-Build Release and run `CpuBench` with 48 kHz, 64 samples, solo-unison8 and dense16-unison8. Use the documented Phase 2 result as the comparison point. Treat dense16 below 1.0x realtime as a hard failure and target approximately 2.0x realtime.
+Release `CpuBench` after `8c4f467`: solo-unison8 `27.51x`, dense16-unison8 `1.76x` realtime on the current machine. The dense result is above the 1.0x hard floor but below the documented Phase 2 target of approximately 2.0x, so profile before further feature work.
 
 Then run, against the exact binary whose hash is recorded:
 
