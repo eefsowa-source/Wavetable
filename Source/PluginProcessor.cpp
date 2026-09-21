@@ -193,7 +193,7 @@ void HybridWavetableAudioProcessor::prepareToPlay (double sr, int block)
     for (int i = 0; i < synth.getNumVoices(); ++i)
         if (auto* v = dynamic_cast<SynthVoice*> (synth.getVoice (i))) v->prepare (sr, block, &audioWavetable);
     if (auto* firstVoice = dynamic_cast<SynthVoice*> (synth.getVoice (0)))
-        setLatencySamples (firstVoice->getSaturationOversamplingLatencySamples());
+        setLatencySamples (firstVoice->getSaturationLatencySamples());
     juce::dsp::ProcessSpec spec { sr, (juce::uint32) juce::jmax (1, block), 2 };
     delayLine.setMaximumDelayInSamples (juce::jmax (4, (int) std::ceil (sr * 1.5) + 4));
     delayLine.prepare (spec);

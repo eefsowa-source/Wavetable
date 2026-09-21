@@ -2,6 +2,7 @@
 #include <JuceHeader.h>
 #include "WavetableOscillator.h"
 #include "RealtimeRandom.h"
+#include "SaturationStage.h"
 #include "UnisonBank.h"
 #include <cstdint>
 
@@ -30,10 +31,7 @@ public:
     void controllerMoved (int, int) override {}
     void prepare (double sampleRate, int blockSize, const std::atomic<const WavetableData*>* wavetable);
     void renderNextBlock (juce::AudioBuffer<float>&, int startSample, int numSamples) override;
-    int getSaturationOversamplingLatencySamples() const noexcept
-    {
-        return (int) saturationOversampling.getLatencyInSamples();
-    }
+    int getSaturationLatencySamples() const noexcept { return saturationStage.getLatencySamples(); }
 private:
     juce::AudioProcessorValueTreeState& params;
     OscillatorUnisonBank osc1Bank, osc2Bank, osc3Bank;
@@ -59,13 +57,11 @@ private:
     bool releasing = false;
     const std::atomic<const WavetableData*>* tableSource = nullptr;
     float lfo1Phase = 0.0f, lfo2Phase = 0.0f;
-    // 2x oversampling wrapped tightly around the tanh saturation stage only,
-    // so the nonlinearity's generated harmonics are folded back down cleanly
-    // instead of aliasing against the block sample rate. Kept per-voice
-    // (rather than moved to the master bus) so saturation still happens
-    // pre-sum, preserving the existing per-voice tone character.
-    juce::dsp::Oversampling<float> saturationOversampling { 2, 1,
-        juce::dsp::Oversampling<float>::filterHalfBandPolyphaseIIR, false, true };
+    // Antiderivative anti-aliasing plus half-band FIR oversampling, wrapped
+    // tightly around the soft clip only. Kept per-voice (rather than moved to
+    // the master bus) so saturation still happens pre-sum, preserving the
+    // existing per-voice tone character.
+    SaturationStage saturationStage;
     juce::AudioBuffer<float> preSaturationBuffer;
     std::vector<float> outputGainScratch;
     float driftPhase = 0.0f;

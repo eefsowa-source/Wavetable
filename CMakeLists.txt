@@ -57,6 +57,10 @@ target_link_libraries(HybridWavetable PRIVATE
   juce::juce_dsp
   juce::juce_gui_extra)
 
+# Public because Source/DSP/SynthVoice.h pulls the vendored eon headers into
+# every target that compiles a voice, including via PluginProcessor.h.
+target_link_libraries(HybridWavetable PUBLIC eon::dsp)
+
 set_target_properties(HybridWavetable PROPERTIES
   MACOSX_DEPLOYMENT_TARGET "12.0")
 
@@ -122,6 +126,8 @@ if (BUILD_TESTING)
     juce::juce_dsp juce::juce_gui_extra)
   set_target_properties(ProcessorQualityTests PROPERTIES MACOSX_DEPLOYMENT_TARGET "12.0")
   add_test(NAME ProcessorQuality COMMAND ProcessorQualityTests)
+  # Compiles a voice, so it needs the vendored eon include path.
+  target_link_libraries(ProcessorQualityTests PRIVATE eon::dsp)
 
   # Renderer-backed alias-quality instrument and baseline (Plan B Task 2). Runs
   # the real processor so a future saturation quality tier can be gated on
@@ -141,6 +147,8 @@ if (BUILD_TESTING)
     juce::juce_dsp juce::juce_gui_extra)
   set_target_properties(QualityOrderTests PROPERTIES MACOSX_DEPLOYMENT_TARGET "12.0")
   add_test(NAME QualityOrder COMMAND QualityOrderTests)
+  # Compiles a voice, so it needs the vendored eon include path.
+  target_link_libraries(QualityOrderTests PRIVATE eon::dsp)
 
   juce_add_console_app(OfflineRendererTests PRODUCT_NAME "Offline Renderer Tests")
   juce_generate_juce_header(OfflineRendererTests)
@@ -157,6 +165,7 @@ if (BUILD_TESTING)
     juce::juce_dsp juce::juce_gui_extra)
   set_target_properties(OfflineRendererTests PROPERTIES MACOSX_DEPLOYMENT_TARGET "12.0")
   add_test(NAME OfflineRenderer COMMAND OfflineRendererTests)
+  target_link_libraries(OfflineRendererTests PRIVATE eon::dsp)
 
   juce_add_console_app(GoldenComparatorTests PRODUCT_NAME "Golden Comparator Tests")
   juce_generate_juce_header(GoldenComparatorTests)
@@ -185,6 +194,7 @@ if (BUILD_TESTING)
     AudioQualitySupport juce::juce_audio_utils juce::juce_audio_processors
     juce::juce_audio_formats juce::juce_cryptography juce::juce_dsp juce::juce_gui_extra)
   set_target_properties(AudioQualityRunner PROPERTIES MACOSX_DEPLOYMENT_TARGET "12.0")
+  target_link_libraries(AudioQualityRunner PRIVATE eon::dsp)
 
   juce_add_console_app(UnisonBankTests PRODUCT_NAME "Unison Bank Tests")
   juce_generate_juce_header(UnisonBankTests)
@@ -243,6 +253,7 @@ if (BUILD_TESTING)
     juce::juce_audio_utils juce::juce_audio_processors juce::juce_dsp juce::juce_gui_extra)
   set_target_properties(ProcessorSmokeTests PROPERTIES MACOSX_DEPLOYMENT_TARGET "12.0")
   add_test(NAME ProcessorSmoke COMMAND ProcessorSmokeTests)
+  target_link_libraries(ProcessorSmokeTests PRIVATE eon::dsp)
 
   # Vendored-copy guard: proves the checked-in third_party/eon_dsp headers
   # compile in this toolchain and still honour the contracts the Plan B

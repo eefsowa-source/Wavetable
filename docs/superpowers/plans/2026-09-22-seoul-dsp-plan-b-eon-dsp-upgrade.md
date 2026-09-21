@@ -4,7 +4,7 @@
 > 체크박스(`- [ ]`)는 실행 시점에 갱신한다.
 
 **작성일:** 2026-09-22  
-**상태:** IN PROGRESS (Task 1, 2, 2b 완료, 2026-09-22)  
+**상태:** IN PROGRESS (Task 1, 2, 2b, 3 완료 / 3b, 4, 5, 6, 7 남음, 2026-09-22)  
 **대상 DSP 코어:** `eon_dsp` rev `c8e71f3` (canonical: `~/Desktop/EON LLM wiki/EON Audio Plugin/eon_dsp`)  
 **대상 제품:** SEOUL DSP (JUCE 8.0.14 wavetable synth, `HybridWavetable`)
 
@@ -182,31 +182,51 @@ Plan B 범위에 포함해 수정했다.**
 half-band FIR polyphase(71/47/35 taps, stopband -113/-102/-90 dB)와 ADAA를 조합해
 같은 CPU 예산에서 더 깨끗한 비선형을 만든다.
 
-**Files**
+**범위 변경 (실행 중 결정):** 등급제(`saturationQuality`)를 Task 3에서 분리해 **Task 3b**로
+미뤘다. 등급은 prepare 시점 확정이 필요하고(파라미터를 prepare 이후에 바꾸면 반영되지 않음)
+래더 설계 자체가 측정 결과에 달려 있었기 때문이다. Task 3은 **DSP 교체와 그 증거**만 다룬다.
 
+**Files (Task 3, 실제 변경)**
+
+- Create: `Source/DSP/SaturationStage.h` (헤더 온리, ADAA1 + eon 반파대역 2x)
 - Modify: `Source/DSP/SynthVoice.h`, `Source/DSP/SynthVoice.cpp`
-- Modify: `Source/PluginProcessor.cpp` (새 choice 파라미터 등록, latency 재계산)
-- Modify: `Source/PluginEditor.cpp` (등급 노출 — §7 결정 1에 따름)
-- Modify: `Tests/AudioQuality/ProcessorQualityTests.cpp`, `Tests/AudioQuality/fixture-manifest.json`
+- Modify: `Source/PluginProcessor.cpp` (지연 보고)
+- Modify: `CMakeLists.txt` (`eon::dsp` 전파: HybridWavetable PUBLIC + voice를 컴파일하는 테스트)
+- Modify: `Tests/AudioQuality/QualityOrderTests.cpp` (계측기 정밀도·게이트, 7.3)
 
-- [ ] **Step 1 (RED):** hot 10 kHz 단일 사인에서 현재 경로의 alias proxy와 THD를 기록하고,
-      "등급 전환 시 alias proxy가 단조 개선" 테스트를 실패시킨다.
-- [ ] **Step 2:** shaper를 **해석적 antiderivative가 존재하는 형태**로 고정하고
-      `eon::ADAA2`(double state, 근접 샘플 시 midpoint fallback)로 감싼다.
-      oversampling은 `eon::Oversampling`으로 교체: Eco=ADAA2 단독, Normal=2x FIR+ADAA2,
-      High=4x FIR+ADAA2.
-- [ ] **Step 3 (GREEN):** Task 2의 게이트 통과 + finite/peak/DC 게이트 유지
-      (fixture peak <= -1 dBTP, 무음 RMS <= -120 dBFS, 후단 DC <= -80 dBFS).
-- [ ] **Step 4:** latency를 **최대 등급 기준으로 prepare 시 확정**하고
-      등급 변경 시 재계산한다. `setLatencySamples` 값 변화를 기록하고, 오프라인 렌더
-      정렬 게이트(REAPER 3-sample 선행 같은 기존 정렬 검증)를 다시 확인한다.
-      `CpuBench`로 등급별 per-voice 비용을 측정한다(128 voice stress 포함).
-- [ ] **Step 5:** 신규 파라미터는 **추가만** 하고 기본값은 기존 청감과 가장 가까운 등급으로 둔다.
-      state v1 fixture 마이그레이션 테스트가 그대로 통과해야 한다. 커밋.
+- [x] **Step 1 (RED):** 교체 전 기준선은 Task 2에서 이미 확보했다(hot 10 kHz에서
+      `-108.92 dBc`). 등급 순서 테스트는 Task 3b로 이동.
+- [x] **Step 2:** 셰이퍼를 해석적 antiderivative가 존재하는 형태(바이어스 tanh)로 고정하고
+      `eon::ADAA1`로 감쌌다. oversampling은 `eon::Oversampler` 2x로 교체.
+      **`ADAA2`가 아니라 `ADAA1`인 이유:** 바이어스 tanh는 F1이 초등함수로 존재하고
+      F2는 존재하지 않는다. eon_dsp도 같은 이유로 `TanhSat`(=ADAA1)을 제공한다.
+      4차 소프트클립(ADAA2)은 정확하지만 하드한 플랫톱이라 현재 tanh 톤과 더 멀어진다.
+- [x] **Step 3 (GREEN):** folded alias가 기본 `-156.99 dBc`, 최대 `-156.54 dBc`로
+      렌더의 float32 잡음 바닥(-156.65 dBc)에 도달. 전체 CTest Release/Debug 11/11.
+      finite/peak/DC/무음/tail/state 게이트 유지.
+- [x] **Step 4:** 지연 0 → **35 samples**(임펄스 왕복 실측, 정수). `CpuBench`:
+      solo 62.9 → **84.8 ms**, dense16 991.3 → **1328.5 ms**(Phase 2 대비 +34%,
+      최초 baseline 1293.0 ms 대비 +2.7%). 기록: cpu-optimization.md.
+- [ ] **Step 5 (이동):** 등급 파라미터 추가·state 마이그레이션·UI 노출은 Task 3b로.
 
-**주의:** per-voice 4x FIR oversampling x 128 voices는 CPU가 급증할 수 있다.
-등급제로 상한을 두고, 필요하면 High 등급에서만 polyphony를 제한한다. 버스 단위로
-옮기는 선택은 pre-sum per-voice 포화라는 현재 톤 설계를 바꾸므로 이 태스크에서 하지 않는다.
+**증거:** [b2-alias-baseline.md](../quality/b2-alias-baseline.md) 7절 (before/after 표,
+셰이퍼 고조파 프로파일, ADAA 단독 대조 실험 -62.69 dBc, 계측기 변경 이유, CPU/지연),
+Release/Debug `ctest` 요약.
+
+**실행 기록 (2026-09-22):** 계획 대비 세 가지가 측정으로 바뀌었다.
+
+1. **oversampling이 필수임을 확인했다.** "ADAA2 단독(Eco)" 전제는 틀렸다. ADAA만 켜면
+   최대 드라이브에서 -62.69 dBc로, 교체 전 IIR 경로(-108.92)보다 46 dB 나쁘다.
+   개선의 대부분은 eon half-band FIR이 담당하고 ADAA는 잔여분을 지운다.
+2. **계측기를 다시 손봐야 했다.** 스테이지가 float32 FFT 바닥보다 깨끗해지자
+   Task 2의 drive 민감도 게이트가 성립하지 않게 되어(double 직접 DFT + 밴드 축소 +
+   주입 라인 캘리브레이션으로 교체), 그 과정을 7.3에 남겼다.
+3. **CPU는 Phase 1/2 절감분을 되돌려 썼다.** dense16이 최초 baseline 수준으로 돌아왔다.
+   음질 대가로 지불한 비용이며, 등급제가 사용자 선택지를 제공할 지점이다.
+
+**Task 3b로 넘기는 등급 래더 (측정으로 확정):** Eco = 2x half-band + 기존 tanh(교체 전
+동작, -108.9 dBc), Normal = 2x + ADAA(현재, -156.5 dBc), High = 4x + ADAA(지연 46 samples,
+소수부 처리 필요). Eco는 "빠르지만 예전만큼 깨끗함"이라는 명시적 선택지다.
 
 ### Task 4 — 필터 드라이브 비선형화 + slope 정직화
 

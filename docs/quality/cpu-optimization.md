@@ -15,8 +15,10 @@
 | baseline | 81.5 ms | 1293.0 ms | 1.55x | [baseline.json](../../Build/quality-cpu/baseline.json) |
 | Phase 1 (레이아웃/MIP 캐시, 호이스트) | 64.9 ms (-20%) | 981.0 ms (-24%) | 2.04x | [phase1.json](../../Build/quality-cpu/phase1.json) |
 | Phase 2 (새추레이션 0 드라이브 스킵) | 62.9 ms (-23%) | 991.3 ms (-23%) | 2.02x | [phase2-satbypass.json](../../Build/quality-cpu/phase2-satbypass.json) |
+| Plan B Task 3 (ADAA + eon half-band 2x) | 84.8 ms (+35% vs Phase 2) | 1328.5 ms (+34% vs Phase 2) | 1.51x | [b2-alias-baseline.md](b2-alias-baseline.md) 7절 |
 
 - dense 시나리오는 saturation 최대이므로 새추레이션 스킵의 이득이 없고 노이즈 범위 내다. 스킵 이득은 드라이브 0 패치에서 발생한다.
+- Plan B Task 3은 Phase 1/2에서 얻은 절감분을 음질로 되돌려 썼다. dense16은 원래 baseline(1293.0 ms)보다 2.7% 느린 수준이고, 대신 folded alias가 -108.9 dBc에서 측정 바닥(-156.5 dBc)까지 내려갔다. 이 비용은 새추레이션 스테이지의 ADAA(샘플당 지수/로그) + half-band FIR에서 나온다.
 
 ## 변경 내용
 

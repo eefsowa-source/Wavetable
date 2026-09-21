@@ -26,27 +26,35 @@
 // window leakage no matter how clean the audio is (measured during Task 2).
 // Measuring a band 1.4 kHz away from any harmonic removes that dependence.
 //
-// What this file guarantees today, while the product still has a single
-// saturation quality path:
-//   1. the renderer hits the requested pitch to better than 0.1 cent, on the
-//      parameter's own quantisation grid;
-//   2. the instrument is deterministic (same seed and configuration, same
-//      samples); and
-//   3. the instrument is sensitive: driving the real saturation stage harder
-//      measurably increases folded-harmonic energy, so a later "quality tier X
-//      is not worse than tier Y" gate cannot pass vacuously.
+// What this file guarantees:
+//   1. the renderer hits the requested pitch to better than 0.1 cent, and a
+//      0.005 semitone tune change reaches the audio as 0.5 cent;
+//   2. the renderer is deterministic (same seed and configuration, same samples);
+//   3. the instrument measures what it claims: a line injected at the folded
+//      frequency is reported within 1 dB from -40 down to -120 dBc, so the
+//      ceiling gate below cannot pass vacuously; and
+//   4. the saturation stage leaves no folded-harmonic energy above the ceiling
+//      at either the default or the maximum drive.
 //
 // What it does NOT yet guarantee, and must not pretend to: the tier ordering
 // Eco < Normal < High. The product has no saturation quality tier yet, so every
 // tier label would render identically and such a gate would be meaningless.
 // Task 3 adds the tier and the ordering assertion here, against this instrument.
 
+// History worth keeping: this file originally proved its own sensitivity by
+// driving the real saturation stage harder and requiring a 15 dB increase in
+// folded energy. That worked while the stage was a naive tanh behind a JUCE IIR
+// oversampler (-108.9 dBc at full drive). After Plan B Task 3 replaced it with
+// antiderivative anti-aliasing plus a half-band FIR, both drive settings land on
+// the render's own float32 noise floor (about -152 dBc) and the drive knob can
+// no longer move the number. The gate was replaced by an injected-line
+// calibration, which tests the instrument directly instead of relying on the
+// product being dirty.
+
 #include "../../Source/PluginProcessor.h"
 #include "Metrics.h"
 #include "OfflineRenderer.h"
 #include "TestHarness.h"
-
-#include <juce_dsp/juce_dsp.h>
 
 #include <algorithm>
 #include <array>
@@ -59,7 +67,6 @@ namespace
 {
 constexpr double kSampleRate = 48000.0;
 constexpr int kAnalysisSamples = 16384;
-constexpr int kAnalysisOrder = 14;          // 16384-point FFT, matches kAnalysisSamples
 constexpr int kWarmupSamples = 4096;
 constexpr int kMidiNote = 123;
 constexpr std::uint32_t kSeed = 0x514f5244u;   // "QORD"
@@ -75,16 +82,25 @@ constexpr float kProbeTuneSemitones = 0.08f;
 constexpr float kCleanSaturation = 0.15f;   // product default
 constexpr float kHotSaturation = 1.0f;      // maximum drive
 
-// Band half-widths. The probe tone is a single spectral line, so the tone band
-// only has to cover the line; the alias band is deliberately wide enough to
-// catch the folded harmonic without reaching the second harmonic 1.4 kHz above.
+// Band half-widths. Both bands hold a single spectral line widened by the Hann
+// window (about 12 Hz), so they only have to be wide enough to contain it. The
+// alias band is kept narrow on purpose: the render is float32 and its
+// quantisation noise is white, so every extra bin in the band raises the
+// measurement floor without adding signal. Measured floor with a 150 Hz band is
+// about -153 dBc; a 600 Hz band costs 6 dB for nothing.
 constexpr double kToneBandHalfWidthHz = 300.0;
-constexpr double kAliasBandHalfWidthHz = 600.0;
+constexpr double kAliasBandHalfWidthHz = 150.0;
 
-// Calibrated against the measured values recorded in
-// docs/quality/b2-alias-baseline.md, with margin.
-constexpr double kMinimumDriveSensitivityDb = 15.0;
+// The saturation stage must not leave folded-harmonic energy the instrument can
+// still measure. The render's own float32 noise floor sits near -156 dBc on this
+// proxy (measured with the non-linearity bypassed), so -150 dBc is the tightest
+// ceiling this instrument can enforce with margin; anything below it is
+// indistinguishable from the floor.
+constexpr double kMaximumFoldedAliasDbc = -150.0;
 constexpr double kMaximumPitchErrorCents = 0.1;
+
+// Injection levels for the instrument calibration below.
+constexpr std::array<double, 3> kCalibrationLevelsDbc { -40.0, -80.0, -120.0 };
 
 double noteFrequencyHz()
 {
@@ -195,34 +211,53 @@ juce::AudioBuffer<float> renderAliasToneWithTune (float tuneSemitones)
     });
 }
 
-// Hann-windowed power sum over a frequency band, in dB. Band selection is
-// independent of the FFT grid, which is the point: the probe tone cannot be
-// placed on a bin.
+// Hann-windowed power sum over a frequency band, in dB, by direct DFT in
+// double precision.
+//
+// Why not juce::dsp::FFT: it is float32, and its round-off floor sits around
+// -150 dBc relative to a full-scale tone. After the saturation stage gained
+// antiderivative anti-aliasing plus a half-band FIR, that floor *is* the
+// measurement: the stage stopped producing folded energy the FFT could see, and
+// the instrument could no longer tell the drive settings apart. A double
+// direct DFT has no such floor here (the remaining limit is the float32
+// quantisation of the rendered samples), so the instrument keeps its dynamic
+// range after the thing it measures got better.
+//
+// Band selection is independent of the DFT grid, which is the point: the probe
+// tone cannot be placed on an exact bin (see the file header).
 double bandPowerDb (const float* samples, int count, double lowHz, double highHz)
 {
-    constexpr int fftSize = 1 << kAnalysisOrder;
-    std::vector<float> data ((size_t) fftSize * 2u, 0.0f);
-    const int used = juce::jmin (count, fftSize);
-    for (int i = 0; i < used; ++i)
+    std::vector<double> windowed ((size_t) count);
+    for (int i = 0; i < count; ++i)
     {
-        const double phase = (double) i / (double) (fftSize - 1);
+        const double phase = (double) i / (double) (count - 1);
         const double window = 0.5 * (1.0 - std::cos (2.0 * juce::MathConstants<double>::pi * phase));
-        data[(size_t) i] = (float) ((double) samples[i] * window);
+        windowed[(size_t) i] = (double) samples[i] * window;
     }
 
-    juce::dsp::FFT fft (kAnalysisOrder);
-    fft.performRealOnlyForwardTransform (data.data());
-
-    const double binWidth = kSampleRate / (double) fftSize;
+    const double binWidth = kSampleRate / (double) count;
+    const int firstBin = juce::jmax (1, (int) std::ceil (lowHz / binWidth));
+    const int lastBin = (int) std::floor (highHz / binWidth);
     double power = 0.0;
-    for (int bin = 1; bin < fftSize / 2; ++bin)
+    for (int bin = firstBin; bin <= lastBin; ++bin)
     {
-        const double frequency = (double) bin * binWidth;
-        if (frequency < lowHz || frequency > highHz)
-            continue;
-        const double re = (double) data[(size_t) 2 * (size_t) bin];
-        const double im = (double) data[(size_t) 2 * (size_t) bin + 1];
-        power += re * re + im * im;
+        // sin/cos rotation recurrence instead of a trig call per sample: the
+        // band holds hundreds of bins and the analysis window is 16384 long.
+        const double omega = 2.0 * juce::MathConstants<double>::pi * (double) bin / (double) count;
+        const double stepCos = std::cos (omega);
+        const double stepSin = std::sin (omega);
+        double re = 1.0, im = 0.0;
+        double sumRe = 0.0, sumIm = 0.0;
+        for (int i = 0; i < count; ++i)
+        {
+            const double x = windowed[(size_t) i];
+            sumRe += x * re;
+            sumIm += x * im;
+            const double nextRe = re * stepCos - im * stepSin;
+            im = re * stepSin + im * stepCos;
+            re = nextRe;
+        }
+        power += sumRe * sumRe + sumIm * sumIm;
     }
     return 10.0 * std::log10 (std::max (power, 1.0e-30));
 }
@@ -288,8 +323,8 @@ void runInstrumentTests (audioquality::TestHarness& test)
 
     std::printf ("Plan B alias-quality instrument\n");
     std::printf ("  note %d, probe tune %.3f semitones\n", kMidiNote, (double) probeTuneSemitones());
-    std::printf ("  probe %.4f Hz, folded third harmonic %.4f Hz, FFT %d, warm-up %d, seed 0x%08x\n",
-                 expectedHz, foldedHz, 1 << kAnalysisOrder, kWarmupSamples, kSeed);
+    std::printf ("  probe %.4f Hz, folded third harmonic %.4f Hz, analysis %d (double direct DFT), warm-up %d, seed 0x%08x\n",
+                 expectedHz, foldedHz, kAnalysisSamples, kWarmupSamples, kSeed);
 
     // The measurement is only meaningful if the folded band cannot contain a
     // legal harmonic of the probe tone, and if it is inside the audio band.
@@ -371,19 +406,55 @@ void runInstrumentTests (audioquality::TestHarness& test)
 
     // Instrument floor, not a product gate: saturation 0 bypasses the nonlinear
     // stage entirely, so what remains is the measurement's own numerical floor
-    // (float32 FFT round-off and the render's own quantisation). Task 3 can only
-    // prove an improvement that stays above this line at low drive.
+    // (mostly the float32 quantisation of the rendered samples). An improvement
+    // can only be proven above this line.
     {
         const double floorProxy = foldedHarmonicAliasDbc (renderAliasTone (0.0f, kBlockSizes[1], kSeed));
         std::printf ("  instrument floor (saturation bypassed): %.2f dBc; clean path is %.2f dB above it, hot path %.2f dB\n",
                      floorProxy, cleanMedian - floorProxy, hotMedian - floorProxy);
     }
 
-    // Sensitivity gate. If driving the real saturation stage harder does not move
-    // the proxy, the instrument cannot judge any future quality tier.
-    test.expect (hotMedian > cleanMedian + kMinimumDriveSensitivityDb,
-                 "the alias proxy resolves harder saturation drive by at least "
-                     + juce::String (kMinimumDriveSensitivityDb, 1) + " dB");
+    // Instrument calibration. Inject a known line at the folded frequency into a
+    // synthetic probe tone and require the proxy to report it. Without this, a
+    // proxy that always returned -inf would pass the ceiling gate for free.
+    {
+        constexpr int total = kAnalysisSamples + kWarmupSamples;
+        const double toneAmplitude = 0.5;
+        for (const double injectedDbc : kCalibrationLevelsDbc)
+        {
+            const double lineAmplitude = toneAmplitude * std::pow (10.0, injectedDbc / 20.0);
+            std::vector<float> injected ((size_t) total);
+            for (int i = 0; i < total; ++i)
+            {
+                const double t = (double) i / kSampleRate;
+                injected[(size_t) i] = (float) (toneAmplitude
+                                                    * std::sin (2.0 * juce::MathConstants<double>::pi
+                                                                * probeFrequencyHz() * t)
+                                                + lineAmplitude
+                                                      * std::sin (2.0 * juce::MathConstants<double>::pi
+                                                                  * foldedThirdHarmonicHz() * t));
+            }
+            juce::AudioBuffer<float> synthetic (1, total);
+            synthetic.copyFrom (0, 0, injected.data(), total);
+            const double measured = foldedHarmonicAliasDbc (synthetic);
+            std::printf ("  calibration: injected %.0f dBc -> measured %.2f dBc\n",
+                         injectedDbc, measured);
+            test.expect (std::abs (measured - injectedDbc) < 1.0,
+                         "the folded-band proxy reports a " + juce::String (injectedDbc, 0)
+                             + " dBc injected line within 1 dB");
+        }
+    }
+
+    // Product gate: what the stage actually leaves behind. Both drive settings
+    // must sit at or below the ceiling; the drive difference is reported above
+    // but is not a gate, because after antiderivative anti-aliasing there is no
+    // longer a meaningful amount of folded energy to scale with drive.
+    test.expect (hotMedian <= kMaximumFoldedAliasDbc,
+                 "folded-harmonic alias at maximum drive stays below "
+                     + juce::String (kMaximumFoldedAliasDbc, 0) + " dBc");
+    test.expect (cleanMedian <= kMaximumFoldedAliasDbc,
+                 "folded-harmonic alias at the default drive stays below "
+                     + juce::String (kMaximumFoldedAliasDbc, 0) + " dBc");
 }
 } // namespace
 

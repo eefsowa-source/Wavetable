@@ -34,8 +34,7 @@ void SynthVoice::prepare (double sr, int blockSize, const std::atomic<const Wave
     filter2.prepare (spec);
     filter.reset(); filter2.reset();
     ampEnv.setSampleRate (sr); filterEnv.setSampleRate (sr);
-    saturationOversampling.initProcessing ((size_t) juce::jmax (1, blockSize));
-    saturationOversampling.reset();
+    saturationStage.prepare (blockSize);
     preSaturationBuffer.setSize (2, juce::jmax (1, blockSize), false, true, true);
     outputGainScratch.assign ((size_t) juce::jmax (1, blockSize), 0.0f);
     // Initialize smoothed parameters with 50ms ramp time.  Starting both the
@@ -259,28 +258,12 @@ void SynthVoice::renderNextBlock (juce::AudioBuffer<float>& output, int start, i
 
     const float saturation = smoothedSaturation.getCurrentValue();
     const float satMakeup = 1.0f - saturation * 0.18f;
-    juce::dsp::AudioBlock<float> preSatBlock (preSaturationBuffer);
-    auto preSatSub = preSatBlock.getSubBlock (0, (size_t) count);
-    // Oversampling and tanh only matter once drive is actually applied, but
-    // a block inside a saturation ramp keeps the legacy path so smoothed
-    // attacks receive the same oversampler filtering as before.
+    // Saturation only matters once drive is actually applied, but a block inside
+    // a ramp keeps the stage running so smoothed attacks receive the same
+    // antialiasing as steady state does.
     const bool saturationBypassed = saturation <= 0.005f && ! smoothedSaturation.isSmoothing();
     if (! saturationBypassed)
-    {
-        auto oversampledBlock = saturationOversampling.processSamplesUp (preSatSub);
-        for (size_t ch = 0; ch < oversampledBlock.getNumChannels(); ++ch)
-        {
-            auto* channelData = oversampledBlock.getChannelPointer (ch);
-            for (size_t n = 0; n < oversampledBlock.getNumSamples(); ++n)
-            {
-                const float x = channelData[n];
-                // Asymmetric soft-clipping with subtle second & third harmonics
-                const float xOffset = x + 0.12f * x * x;
-                channelData[n] = std::tanh (xOffset) - 0.118f * std::tanh (0.12f * x * x);
-            }
-        }
-        saturationOversampling.processSamplesDown (preSatSub);
-    }
+        saturationStage.process (preSatLeft, outRight != nullptr ? preSatRight : nullptr, count);
     for (int i = 0; i < count; ++i)
     {
         out[i] += preSatLeft[i] * satMakeup * outputGainScratch[(size_t) i];
