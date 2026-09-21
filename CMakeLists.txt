@@ -123,6 +123,25 @@ if (BUILD_TESTING)
   set_target_properties(ProcessorQualityTests PROPERTIES MACOSX_DEPLOYMENT_TARGET "12.0")
   add_test(NAME ProcessorQuality COMMAND ProcessorQualityTests)
 
+  # Renderer-backed alias-quality instrument and baseline (Plan B Task 2). Runs
+  # the real processor so a future saturation quality tier can be gated on
+  # measured folded-harmonic energy instead of an advertised label.
+  juce_add_console_app(QualityOrderTests PRODUCT_NAME "Quality Order Tests")
+  juce_generate_juce_header(QualityOrderTests)
+  target_sources(QualityOrderTests PRIVATE
+    Tests/AudioQuality/QualityOrderTests.cpp
+    Tests/AudioQuality/OfflineRenderer.cpp
+    Source/PluginProcessor.cpp Source/PluginEditor.cpp
+    Source/DSP/WavetableOscillator.cpp Source/DSP/WavetableImporter.cpp Source/DSP/OutputSafety.cpp Source/DSP/SynthVoice.cpp
+    Source/DSP/UnisonBank.cpp)
+  target_compile_features(QualityOrderTests PRIVATE cxx_std_20)
+  target_compile_definitions(QualityOrderTests PRIVATE JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0)
+  target_link_libraries(QualityOrderTests PRIVATE
+    AudioQualitySupport juce::juce_audio_utils juce::juce_audio_processors
+    juce::juce_dsp juce::juce_gui_extra)
+  set_target_properties(QualityOrderTests PROPERTIES MACOSX_DEPLOYMENT_TARGET "12.0")
+  add_test(NAME QualityOrder COMMAND QualityOrderTests)
+
   juce_add_console_app(OfflineRendererTests PRODUCT_NAME "Offline Renderer Tests")
   juce_generate_juce_header(OfflineRendererTests)
   target_sources(OfflineRendererTests PRIVATE

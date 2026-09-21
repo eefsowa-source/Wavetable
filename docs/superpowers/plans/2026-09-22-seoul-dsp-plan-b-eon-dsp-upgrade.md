@@ -4,7 +4,7 @@
 > 체크박스(`- [ ]`)는 실행 시점에 갱신한다.
 
 **작성일:** 2026-09-22  
-**상태:** IN PROGRESS (Task 1 완료, 2026-09-22)  
+**상태:** IN PROGRESS (Task 1, 2 완료, 2026-09-22)  
 **대상 DSP 코어:** `eon_dsp` rev `c8e71f3` (canonical: `~/Desktop/EON LLM wiki/EON Audio Plugin/eon_dsp`)  
 **대상 제품:** SEOUL DSP (JUCE 8.0.14 wavetable synth, `HybridWavetable`)
 
@@ -103,17 +103,45 @@ Task 3/4의 개선을 수치로 판정하려면 "wrapper 수준 quality-order ga
 - Modify: `CMakeLists.txt` (콘솔 앱 + `add_test(NAME QualityOrder ...)`)
 - Create: `docs/quality/b2-alias-baseline.md`
 
-- [ ] **Step 1 (RED):** 품질 등급 개념이 아직 없으므로, 등급 열거형과 렌더 함수를 요구하는 테스트가 컴파일 실패.
-- [ ] **Step 2:** 실제 `HybridWavetableAudioProcessor` 렌더러로 결정적 매트릭스를 만든다.
-      48 kHz, 10 kHz 사인, 16384 샘플 + 4096 warm-up, block 패턴 64/127/256,
-      odd/even/balanced 캐릭터, medium/hot 레벨. 각 렌더의 folded-harmonic alias proxy를
-      `audioquality::measureInharmonicAliasDbc`로 계산하고 등급별 median을 낸다.
-- [ ] **Step 3 (GREEN):** Normal이 Eco보다 최소 12 dB 개선, High는 Normal 대비 1 dB 이상 악화되지 않음
-      (YinYeng 2026-09 후보에서 쓴 값. 제품별로 재조정 가능).
-- [ ] **Step 4:** 현재 코드(=단일 등급)의 alias proxy 수치를 `docs/quality/b2-alias-baseline.md`에
-      머신/빌드타입/바이너리 SHA256과 함께 기록. Golden은 승격하지 않는다. 커밋.
+- [x] **Step 1 (RED, 계획 대비 변경):** 당초 계획은 "등급 열거형이 없어 컴파일 실패"를 RED로
+      잡는 것이었으나, 그러면 빌드가 깨진 상태로 남는다. 그래서 RED를 두 갈래로 실행했다:
+      (a) `measureInharmonicAliasDbc` 기반 계측기가 실제로 판정 불가임을 실측으로 확인
+      (-8.7 dBc 고정, saturation 변화에 0.00 dB 반응), (b) 그 원인이 측정 설계임을 규명.
+- [x] **Step 2:** 실제 `HybridWavetableAudioProcessor`를 `OfflineRenderer`로 렌더하는
+      결정적 계측기를 만든다. 48 kHz, note 123 순수 사인, 16384-point Hann 분석 +
+      4096 warm-up, block 64/127/256. 프록시는 **folded-band 비율**로 구현했다:
+      tone band `f0 ± 300 Hz` 대비 alias band `|3*f0 - 48000| ± 600 Hz`.
+      `audioquality::measureInharmonicAliasDbc`는 쓰지 않는다 — 아래 실행 기록 참조.
+- [x] **Step 3 (GREEN, 부분):** 등급이 아직 없으므로 등급 순서 게이트 대신 계측기 자체의
+      유효성을 고정했다: 피치 0.1 cent 이내 도달, 렌더 결정성(bit-identical),
+      drive 민감도 (기본->최대 **+24.56 dB**, 게이트 +15 dB). 등급 순서 게이트
+      (Normal >= Eco + 12 dB, High >= Normal - 1 dB)는 **Task 3으로 이동**한다.
+- [x] **Step 4:** `docs/quality/b2-alias-baseline.md`에 머신/빌드타입/바이너리 SHA256과
+      기준선(-133.48 dBc 기본, -108.92 dBc 최대, 계측기 바닥 -151.42 dBc)을 기록.
+      Golden 미승격. Release 11/11, Debug 통과. 커밋.
 
-**증거:** `Build/quality-b2-before/` 렌더 + report, baseline 문서.
+**증거:** [b2-alias-baseline.md](../quality/b2-alias-baseline.md), `ctest -R QualityOrder`
+요약(Release 0.81 s / Debug 1.51 s), 실행 파일 SHA-256(Release `9939517d...`).
+
+**실행 기록 (2026-09-22) — 계획에서 바뀐 두 가지:**
+
+1. **계측기를 bin 기반에서 밴드 기반으로 바꿨다.** 첫 시도는 `measureInharmonicAliasDbc`를
+   그대로 쓰고 프로브 톤을 FFT bin에 맞추려 했으나, 프로브가 0.45 cents 플랫하게 나와
+   지표가 -8.7 dBc에 고정됐고 saturation 변화에 0.00 dB 반응했다. 두 독립 추정기
+   (parabolic, zero-crossing)가 같은 값을 줘서 측정 오류가 아님을 확인한 뒤 원인을 찾았다:
+   **JUCE 8의 `AudioParameterFloat(id, name, min, max, default)`가
+   `NormalisableRange(min, max, 0.01f)`로 전달**하므로 `osc1Tune`(±24 semitones)의
+   격자가 1 cent가 되고, 10 kHz에서 1 cent = 5.78 Hz > bin 간격 2.93 Hz라서
+   **bin 정렬이 원리적으로 불가능**하다. 요청 0.074553 -> 실제 0.07 (오차 -0.455 cents)이
+   관측과 정확히 일치했다. 그래서 고조파에서 1.4 kHz 떨어진 밴드를 재는 프록시로 바꿨다.
+2. **등급 순서 게이트를 Task 3으로 넘겼다.** 등급이 없는 상태에서 순서를 주장하면
+   항상 통과하거나(무의미) 항상 실패한다. 대신 계측기의 민감도와 결정성을 지금 고정해,
+   Task 3이 "등급이 실제로 달라졌는가"만 판정하면 되도록 만들었다.
+
+**부수 발견 (제품 영향, 별도 판단 필요):** 위 0.01 격자는 플러그인의 **모든 float
+파라미터**에 적용된다. `delayTime`(0.03..1.5 s)은 10 ms 단위, ADSR 6개 파라미터
+(최소 0.001 s)는 실효 최소값이 0.01 s, `osc1Tune`은 1 cent 단위다. 값 범위는 그대로 두고
+`NormalisableRange`를 명시적으로 넘기면 해결된다. Plan B 범위에 포함할지는 미결정.
 
 ### Task 3 — 새터레이션 스테이지 교체 (ADAA2 + eon::Oversampling, 등급제)
 
