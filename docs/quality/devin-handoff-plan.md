@@ -1,4 +1,4 @@
-# Devin handoff: SEOUL DSP DSP quality pass
+# Devin handoff: SEOUL DSP quality pass (Ableton-only host validation)
 
 Date: 2026-09-20
 Base commit: `4721efc`
@@ -47,17 +47,16 @@ Then run, against the exact binary whose hash is recorded:
 2. AudioQualityRunner with finite-output evidence;
 3. pluginval strictness 10;
 4. auval;
-5. REAPER smoke in a disposable profile;
-6. Ableton Live load, playback, bypass, automation, save/reopen, and CPU/dropout smoke;
-7. human blind listening as a separate gate.
+5. Ableton Live VST3 load, playback, bypass, automation, save/reopen, and CPU/dropout smoke;
+6. human blind listening as a separate gate.
 
-Record binary SHA256, host version, sample rate, and block size for every host result. Offline tests, pluginval, host smoke, and listening are separate evidence layers.
+Current host scope is **Ableton Live only**. Do not run or report a new REAPER result for this release pass. Record binary SHA256, Ableton version, sample rate, and block size for every host result. Offline tests, pluginval, auval, Ableton smoke, and listening are separate evidence layers.
 
 ## Scope and deliverables
 
 Own the DSP files and related tests: `Source/PluginProcessor.*`, `Source/DSP/SynthVoice.cpp`, `Source/DSP/WavetableOscillator.cpp`, and AudioQuality/ProcessorSmoke tests. Preserve the existing `PluginEditor.*`, `EditorTypes.h`, and `docs/design/*` work unless a build conflict requires a minimal adjustment.
 
-Deliver the corrected source, Release CPU JSON, CTest/AudioQuality reports, pluginval/auval/REAPER/Ableton logs, updated hashes, and a final report that labels code, host, and listening gates independently.
+Deliver the corrected source, Release CPU JSON, CTest/AudioQuality reports, pluginval/auval/Ableton logs, updated hashes, and a final report that labels code, host, and listening gates independently.
 
 ## Validation snapshot (2026-09-21)
 
@@ -66,4 +65,5 @@ Deliver the corrected source, Release CPU JSON, CTest/AudioQuality reports, plug
 - Release CPU: solo-unison8 `27.51x`, dense16-unison8 `1.76x` realtime at 48 kHz / 64 samples.
 - AU validation: `auval -v aumu Hwbl Eona` passed. Log: `Build-Release/host-validation-20260921/auval-seoul-dsp-release.log`.
 - Release VST3 SHA256: `9de1464dab7244671f3c5dd4cecb68118b388df66eb468c4a38ff81b0dcb15c9`.
-- pluginval is unavailable on this machine; REAPER and Ableton host gates remain pending for this exact Release hash.
+- pluginval is unavailable on this machine; the Ableton host gate remains pending for this exact Release hash.
+- REAPER evidence in older documents is historical only and is excluded from the current release decision.
