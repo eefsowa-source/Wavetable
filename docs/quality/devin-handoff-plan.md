@@ -58,3 +58,12 @@ Record binary SHA256, host version, sample rate, and block size for every host r
 Own the DSP files and related tests: `Source/PluginProcessor.*`, `Source/DSP/SynthVoice.cpp`, `Source/DSP/WavetableOscillator.cpp`, and AudioQuality/ProcessorSmoke tests. Preserve the existing `PluginEditor.*`, `EditorTypes.h`, and `docs/design/*` work unless a build conflict requires a minimal adjustment.
 
 Deliver the corrected source, Release CPU JSON, CTest/AudioQuality reports, pluginval/auval/REAPER/Ableton logs, updated hashes, and a final report that labels code, host, and listening gates independently.
+
+## Validation snapshot (2026-09-21)
+
+- Build-Release CTest: 9/9 passed.
+- Release AudioQuality foundation matrix: 54 fixtures, `finiteFailureCount=0`; report remains `passed=false` because `Tests/AudioQuality/golden/manifest.json` has no golden entries.
+- Release CPU: solo-unison8 `27.51x`, dense16-unison8 `1.76x` realtime at 48 kHz / 64 samples.
+- AU validation: `auval -v aumu Hwbl Eona` passed. Log: `Build-Release/host-validation-20260921/auval-seoul-dsp-release.log`.
+- Release VST3 SHA256: `9de1464dab7244671f3c5dd4cecb68118b388df66eb468c4a38ff81b0dcb15c9`.
+- pluginval is unavailable on this machine; REAPER and Ableton host gates remain pending for this exact Release hash.
