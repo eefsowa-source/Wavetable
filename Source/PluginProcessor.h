@@ -68,8 +68,9 @@ private:
 
     juce::dsp::DelayLine<float, juce::dsp::DelayLineInterpolationTypes::Lagrange3rd> delayLine { 96000 };
     juce::dsp::LinkwitzRileyFilter<float> monoBassLowpass, monoBassHighpass;
+    // Reused by the master-width crossover; never allocate from processBlock().
+    juce::AudioBuffer<float> lowBandScratch;
     juce::dsp::Reverb reverb;
-    float reverbLfoPhase = 0.0f;
     OutputSafety outputSafety;
     juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> smoothedDelayTime;
     juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> smoothedDelayFeedback;

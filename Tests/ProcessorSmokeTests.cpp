@@ -174,6 +174,25 @@ int main()
     ok &= check (monoDifference < 1.0e-5f,
                  "master width zero collapses the voice to mono");
 
+    // The fractional delay must remain valid at the highest supported sample
+    // rates. This catches a fixed-size delay line that cannot hold 1.5 seconds
+    // at 192 kHz.
+    auto highRateProcessor = std::make_unique<HybridWavetableAudioProcessor>();
+    highRateProcessor->prepareToPlay (192000.0, 128);
+    setPlainParameter (*highRateProcessor, "delayTime", 1.5f);
+    setPlainParameter (*highRateProcessor, "delayMix", 1.0f);
+    setPlainParameter (*highRateProcessor, "output", 0.0f);
+    juce::AudioBuffer<float> highRateBuffer (2, 128);
+    juce::MidiBuffer highRateMidi;
+    highRateMidi.addEvent (juce::MidiMessage::noteOn (1, 60, (juce::uint8) 100), 0);
+    highRateProcessor->processBlock (highRateBuffer, highRateMidi);
+    bool highRateFinite = true;
+    for (int channel = 0; channel < highRateBuffer.getNumChannels(); ++channel)
+        for (int sample = 0; sample < highRateBuffer.getNumSamples(); ++sample)
+            highRateFinite &= std::isfinite (highRateBuffer.getSample (channel, sample));
+    ok &= check (highRateFinite,
+                 "1.5 second delay remains finite at 192 kHz");
+
     // A pathological imported table can contain a strong constant component.
     // The final output stage must remove it without relying on the importer or
     // oscillator/filter configuration to have done so earlier.

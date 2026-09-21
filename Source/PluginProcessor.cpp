@@ -180,6 +180,7 @@ void HybridWavetableAudioProcessor::prepareToPlay (double sr, int block)
     if (auto* firstVoice = dynamic_cast<SynthVoice*> (synth.getVoice (0)))
         setLatencySamples (firstVoice->getSaturationOversamplingLatencySamples());
     juce::dsp::ProcessSpec spec { sr, (juce::uint32) juce::jmax (1, block), 2 };
+    delayLine.setMaximumDelayInSamples (juce::jmax (4, (int) std::ceil (sr * 1.5) + 4));
     delayLine.prepare (spec);
     delayLine.reset();
     monoBassLowpass.prepare (spec);
@@ -188,6 +189,8 @@ void HybridWavetableAudioProcessor::prepareToPlay (double sr, int block)
     monoBassHighpass.prepare (spec);
     monoBassHighpass.setType (juce::dsp::LinkwitzRileyFilterType::highpass);
     monoBassHighpass.setCutoffFrequency (100.0f);
+    lowBandScratch.setSize (2, juce::jmax (1, block), false, true, true);
+    lowBandScratch.clear();
     reverb.prepare (spec);
     reverb.reset();
     outputSafety.prepare (sr);
@@ -209,7 +212,13 @@ void HybridWavetableAudioProcessor::prepareToPlay (double sr, int block)
 void HybridWavetableAudioProcessor::releaseResources() {}
 void HybridWavetableAudioProcessor::reset()
 {
+    delayLine.reset();
+    monoBassLowpass.reset();
+    monoBassHighpass.reset();
+    lowBandScratch.clear();
+    reverb.reset();
     outputSafety.reset();
+    effectSmoothersNeedInitialisation = true;
 }
 bool HybridWavetableAudioProcessor::isBusesLayoutSupported (const BusesLayout& l) const
 { return l.getMainOutputChannelSet() == juce::AudioChannelSet::mono() || l.getMainOutputChannelSet() == juce::AudioChannelSet::stereo(); }
@@ -262,9 +271,10 @@ void HybridWavetableAudioProcessor::processBlock (juce::AudioBuffer<float>& b, j
         smoothedMasterWidth.setTargetValue (juce::jlimit (0.0f, 2.0f,
                                                           parameters.getRawParameterValue ("masterWidth")->load()));
         // Elliptical Sub-Bass Crossover: Keep low end (<100Hz) pure mono to prevent phase cancellation
-        juce::AudioBuffer<float> lowBand;
-        lowBand.makeCopyOf (b);
-        juce::dsp::AudioBlock<float> lowBlock (lowBand);
+        const auto samples = b.getNumSamples();
+        for (int channel = 0; channel < 2; ++channel)
+            lowBandScratch.copyFrom (channel, 0, b, channel, 0, samples);
+        auto lowBlock = juce::dsp::AudioBlock<float> (lowBandScratch).getSubBlock (0, (size_t) samples);
         juce::dsp::AudioBlock<float> highBlock (b);
         monoBassLowpass.process (juce::dsp::ProcessContextReplacing<float> (lowBlock));
         monoBassHighpass.process (juce::dsp::ProcessContextReplacing<float> (highBlock));
@@ -274,7 +284,8 @@ void HybridWavetableAudioProcessor::processBlock (juce::AudioBuffer<float>& b, j
             const auto width = smoothedMasterWidth.getNextValue();
             if (width <= 0.0001f)
             {
-                const auto monoSum = 0.5f * (b.getSample (0, i) + b.getSample (1, i) + lowBand.getSample (0, i) + lowBand.getSample (1, i));
+                const auto monoSum = 0.5f * (b.getSample (0, i) + b.getSample (1, i)
+                                              + lowBandScratch.getSample (0, i) + lowBandScratch.getSample (1, i));
                 b.setSample (0, i, monoSum);
                 b.setSample (1, i, monoSum);
             }
@@ -282,7 +293,7 @@ void HybridWavetableAudioProcessor::processBlock (juce::AudioBuffer<float>& b, j
             {
                 const auto highMid = 0.5f * (b.getSample (0, i) + b.getSample (1, i));
                 const auto highSide = 0.5f * (b.getSample (0, i) - b.getSample (1, i)) * width;
-                const auto lowMono = 0.5f * (lowBand.getSample (0, i) + lowBand.getSample (1, i));
+                const auto lowMono = 0.5f * (lowBandScratch.getSample (0, i) + lowBandScratch.getSample (1, i));
                 b.setSample (0, i, lowMono + highMid + highSide);
                 b.setSample (1, i, lowMono + highMid - highSide);
             }
