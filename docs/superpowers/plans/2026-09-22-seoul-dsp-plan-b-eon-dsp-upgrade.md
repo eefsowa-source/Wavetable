@@ -4,7 +4,7 @@
 > 체크박스(`- [ ]`)는 실행 시점에 갱신한다.
 
 **작성일:** 2026-09-22  
-**상태:** IN PROGRESS (Task 1, 2 완료, 2026-09-22)  
+**상태:** IN PROGRESS (Task 1, 2, 2b 완료, 2026-09-22)  
 **대상 DSP 코어:** `eon_dsp` rev `c8e71f3` (canonical: `~/Desktop/EON LLM wiki/EON Audio Plugin/eon_dsp`)  
 **대상 제품:** SEOUL DSP (JUCE 8.0.14 wavetable synth, `HybridWavetable`)
 
@@ -138,10 +138,42 @@ Task 3/4의 개선을 수치로 판정하려면 "wrapper 수준 quality-order ga
    항상 통과하거나(무의미) 항상 실패한다. 대신 계측기의 민감도와 결정성을 지금 고정해,
    Task 3이 "등급이 실제로 달라졌는가"만 판정하면 되도록 만들었다.
 
-**부수 발견 (제품 영향, 별도 판단 필요):** 위 0.01 격자는 플러그인의 **모든 float
-파라미터**에 적용된다. `delayTime`(0.03..1.5 s)은 10 ms 단위, ADSR 6개 파라미터
-(최소 0.001 s)는 실효 최소값이 0.01 s, `osc1Tune`은 1 cent 단위다. 값 범위는 그대로 두고
-`NormalisableRange`를 명시적으로 넘기면 해결된다. Plan B 범위에 포함할지는 미결정.
+**부수 발견:** 위 0.01 격자는 플러그인의 **모든 float 파라미터**에 적용된다.
+`delayTime`(0.03..1.5 s)은 10 ms 단위, ADSR 6개 파라미터(최소 0.001 s)는 실효
+최소값이 0.01 s, `osc1Tune`은 1 cent 단위다. **사용자 승인("포함")으로 Task 2b에서
+Plan B 범위에 포함해 수정했다.**
+
+### Task 2b — 파라미터 해상도 복원 (Task 2에서 발견 / 승인 후 추가)
+
+**Files**
+
+- Modify: `Source/PluginProcessor.cpp` (`makeLayout()`의 float 파라미터 생성)
+- Modify: `Tests/AudioQuality/ProcessorQualityTests.cpp` (값 보존 회귀)
+- Modify: `Tests/AudioQuality/QualityOrderTests.cpp` (미세 tune이 오디오에 도달하는지)
+- Modify: `docs/quality/b2-alias-baseline.md` (6절)
+
+- [x] **Step 1 (RED):** `ProcessorQuality`에 6개 파라미터(`osc1Tune`, `ampAttack`,
+      `filterDecay`, `delayTime`, `osc1Pos`, `lfo1Rate`)의 요청값 보존을 요구하는
+      테스트를 추가 -> **6/6 실패**. `QualityOrder`에 tune 0.070 vs 0.075 비교 추가 ->
+      **0.9972 cents**로 측정되어 "0.5 cent" 기대 실패.
+- [x] **Step 2:** `makeLayout()`에 연속 범위 팩토리
+      (`juce::NormalisableRange<float>(min, max, 0.0f)`)를 추가하고 float 파라미터
+      39개에 적용. 선형·skew 1이므로 정규화 <-> 실제값 매핑은 이전과 동일하고 스냅만
+      사라진다(기존 세션/프리셋 저장값은 그대로 복원). 파라미터 ID와 범위는 변경 없음.
+- [x] **Step 3 (GREEN):** 두 테스트 모두 통과, tune 변화량 **0.4972 cents**.
+      전체 CTest Release **11/11**, Debug 통과. 파라미터 개수/ID 불변.
+- [x] **Step 4:** 기준선 재측정 및 문서 갱신. Golden 미승격. 커밋.
+
+**증거:** RED 실패 로그(6개 파라미터 + 0.9972 cents), GREEN 로그
+(0.4972 cents), Release/Debug `ctest` 요약.
+
+**실행 기록 (2026-09-22):** 39개 float 파라미터 전부에 적용했다. "음질에 영향 있는
+것만" 고르는 대신 클래스 전체를 없애는 편이 리뷰가 쉽고, 스냅하고 있던 파라미터를
+남겨두면 다음 사람이 같은 함정에 빠진다(이번 Task 2가 정확히 그 함정이었다).
+부작용 점검: 파라미터 ID·범위·기본값·개수 불변, 상태 마이그레이션 테스트 포함
+11개 테스트 전부 통과. alias proxy 수치는 0.01~0.75 dB 움직였는데, 이는 파라미터
+값의 마지막 ULP 차이가 float32 FFT 수치 바닥을 움직인 결과이지 음질 변화가 아니다
+(게이트 수치인 drive 민감도는 24.56 -> 24.55 dB).
 
 ### Task 3 — 새터레이션 스테이지 교체 (ADAA2 + eon::Oversampling, 등급제)
 

@@ -88,55 +88,70 @@ static juce::AudioProcessorValueTreeState::ParameterLayout makeLayout()
 {
     using P = juce::AudioParameterFloat; using C = juce::AudioParameterChoice; using B = juce::AudioParameterBool;
     juce::AudioProcessorValueTreeState::ParameterLayout l;
-    l.add (std::make_unique<P> ("osc1Pos", "Osc 1 Wavetable", 0.0f, 1.0f, 0.0f));
-    l.add (std::make_unique<P> ("osc2Pos", "Osc 2 Wavetable", 0.0f, 1.0f, 0.35f));
-    l.add (std::make_unique<P> ("osc3Pos", "Osc 3 Wavetable", 0.0f, 1.0f, 0.67f));
+    // JUCE's AudioParameterFloat(id, name, min, max, default) constructor
+    // forwards to NormalisableRange(min, max, 0.01f), which snaps every
+    // parameter to a 0.01 step *of its own unit*. That is wrong for this
+    // instrument: it quantises osc1Tune to 1 cent, every envelope time to 10 ms
+    // (so the 0.001 s range minimum is unreachable) and the delay time to 10 ms.
+    // Ask for a continuous, linear range explicitly. The normalised <-> real
+    // mapping is unchanged (linear, skew 1), so only the snap disappears and
+    // stored sessions and factory presets keep their exact values.
+    const auto continuous = [] (const juce::String& id, const juce::String& name,
+                                float minValue, float maxValue, float defaultValue)
+    {
+        return std::make_unique<P> (id, name,
+                                    juce::NormalisableRange<float> (minValue, maxValue, 0.0f),
+                                    defaultValue);
+    };
+    l.add (continuous ("osc1Pos", "Osc 1 Wavetable", 0.0f, 1.0f, 0.0f));
+    l.add (continuous ("osc2Pos", "Osc 2 Wavetable", 0.0f, 1.0f, 0.35f));
+    l.add (continuous ("osc3Pos", "Osc 3 Wavetable", 0.0f, 1.0f, 0.67f));
     for (int osc = 1; osc <= 3; ++osc)
     {
         const auto prefix = "osc" + juce::String (osc);
-        l.add (std::make_unique<P> (prefix + "Level", prefix + " Level", 0.0f, 1.0f, 0.75f));
-        l.add (std::make_unique<P> (prefix + "Tune", prefix + " Tune", -24.0f, 24.0f, 0.0f));
-        l.add (std::make_unique<P> (prefix + "Unison", prefix + " Unison", 1.0f, 8.0f, 1.0f));
-        l.add (std::make_unique<P> (prefix + "Spread", prefix + " Spread", 0.0f, 1.0f, 0.2f));
-        l.add (std::make_unique<P> (prefix + "Detune", prefix + " Detune", 0.0f, 50.0f, 12.0f));
+        l.add (continuous (prefix + "Level", prefix + " Level", 0.0f, 1.0f, 0.75f));
+        l.add (continuous (prefix + "Tune", prefix + " Tune", -24.0f, 24.0f, 0.0f));
+        l.add (continuous (prefix + "Unison", prefix + " Unison", 1.0f, 8.0f, 1.0f));
+        l.add (continuous (prefix + "Spread", prefix + " Spread", 0.0f, 1.0f, 0.2f));
+        l.add (continuous (prefix + "Detune", prefix + " Detune", 0.0f, 50.0f, 12.0f));
     }
-    l.add (std::make_unique<P> ("unisonKeyTrack", "Unison Key Track", -1.0f, 1.0f, 0.0f));
+    l.add (continuous ("unisonKeyTrack", "Unison Key Track", -1.0f, 1.0f, 0.0f));
     l.add (std::make_unique<C> ("filterType", "Filter Type", juce::StringArray { "Low-pass", "High-pass", "Band-pass" }, 0));
     l.add (std::make_unique<C> ("filterSlope", "Filter Slope", juce::StringArray { "12 dB/oct", "12 dB/oct", "24 dB/oct", "24 dB/oct" }, 3));
-    l.add (std::make_unique<P> ("cutoff", "Cutoff", 20.0f, 20000.0f, 12000.0f));
-    l.add (std::make_unique<P> ("resonance", "Resonance", 0.1f, 1.0f, 0.25f));
-    l.add (std::make_unique<P> ("filterDrive", "Filter Drive", -12.0f, 24.0f, 0.0f));
-    l.add (std::make_unique<P> ("saturation", "Saturation", 0.0f, 1.0f, 0.15f));
-    l.add (std::make_unique<P> ("output", "Output", -60.0f, 6.0f, -6.0f));
-    l.add (std::make_unique<P> ("filterEnvAmount", "Filter Envelope Amount", -1.0f, 1.0f, 0.5f));
-    l.add (std::make_unique<P> ("masterWidth", "Master Width", 0.0f, 2.0f, 1.0f));
-    l.add (std::make_unique<P> ("ampAttack", "Amp Attack", 0.001f, 10.0f, 0.01f));
-    l.add (std::make_unique<P> ("ampDecay", "Amp Decay", 0.001f, 10.0f, 0.25f));
-    l.add (std::make_unique<P> ("ampSustain", "Amp Sustain", 0.0f, 1.0f, 0.8f));
-    l.add (std::make_unique<P> ("ampRelease", "Amp Release", 0.001f, 10.0f, 0.35f));
-    l.add (std::make_unique<P> ("filterAttack", "Filter Attack", 0.001f, 10.0f, 0.01f));
-    l.add (std::make_unique<P> ("filterDecay", "Filter Decay", 0.001f, 10.0f, 0.25f));
-    l.add (std::make_unique<P> ("filterSustain", "Filter Sustain", 0.0f, 1.0f, 0.8f));
-    l.add (std::make_unique<P> ("filterRelease", "Filter Release", 0.001f, 10.0f, 0.35f));
-    l.add (std::make_unique<P> ("lfo1Rate", "LFO 1 Rate", 0.05f, 20.0f, 1.0f));
-    l.add (std::make_unique<P> ("lfo1Depth", "LFO 1 Depth", 0.0f, 1.0f, 0.0f));
+    l.add (continuous ("cutoff", "Cutoff", 20.0f, 20000.0f, 12000.0f));
+    l.add (continuous ("resonance", "Resonance", 0.1f, 1.0f, 0.25f));
+    l.add (continuous ("filterDrive", "Filter Drive", -12.0f, 24.0f, 0.0f));
+    l.add (continuous ("saturation", "Saturation", 0.0f, 1.0f, 0.15f));
+    l.add (continuous ("output", "Output", -60.0f, 6.0f, -6.0f));
+    l.add (continuous ("filterEnvAmount", "Filter Envelope Amount", -1.0f, 1.0f, 0.5f));
+    l.add (continuous ("masterWidth", "Master Width", 0.0f, 2.0f, 1.0f));
+    l.add (continuous ("ampAttack", "Amp Attack", 0.001f, 10.0f, 0.01f));
+    l.add (continuous ("ampDecay", "Amp Decay", 0.001f, 10.0f, 0.25f));
+    l.add (continuous ("ampSustain", "Amp Sustain", 0.0f, 1.0f, 0.8f));
+    l.add (continuous ("ampRelease", "Amp Release", 0.001f, 10.0f, 0.35f));
+    l.add (continuous ("filterAttack", "Filter Attack", 0.001f, 10.0f, 0.01f));
+    l.add (continuous ("filterDecay", "Filter Decay", 0.001f, 10.0f, 0.25f));
+    l.add (continuous ("filterSustain", "Filter Sustain", 0.0f, 1.0f, 0.8f));
+    l.add (continuous ("filterRelease", "Filter Release", 0.001f, 10.0f, 0.35f));
+    l.add (continuous ("lfo1Rate", "LFO 1 Rate", 0.05f, 20.0f, 1.0f));
+    l.add (continuous ("lfo1Depth", "LFO 1 Depth", 0.0f, 1.0f, 0.0f));
     l.add (std::make_unique<C> ("lfo1Destination", "LFO 1 Destination", juce::StringArray { "Pitch", "Cutoff", "Wavetable" }, 1));
-    l.add (std::make_unique<P> ("lfo2Rate", "LFO 2 Rate", 0.05f, 20.0f, 0.25f));
-    l.add (std::make_unique<P> ("lfo2Depth", "LFO 2 Depth", 0.0f, 1.0f, 0.0f));
+    l.add (continuous ("lfo2Rate", "LFO 2 Rate", 0.05f, 20.0f, 0.25f));
+    l.add (continuous ("lfo2Depth", "LFO 2 Depth", 0.0f, 1.0f, 0.0f));
     l.add (std::make_unique<C> ("lfo2Destination", "LFO 2 Destination", juce::StringArray { "Pitch", "Cutoff", "Wavetable" }, 2));
-    l.add (std::make_unique<P> ("delayTime", "Delay Time", 0.03f, 1.5f, 0.32f));
-    l.add (std::make_unique<P> ("delayFeedback", "Delay Feedback", 0.0f, 0.9f, 0.35f));
-    l.add (std::make_unique<P> ("delayMix", "Delay Mix", 0.0f, 1.0f, 0.0f));
-    l.add (std::make_unique<P> ("reverbSize", "Reverb Size", 0.0f, 1.0f, 0.45f));
-    l.add (std::make_unique<P> ("reverbDamping", "Reverb Damping", 0.0f, 1.0f, 0.5f));
-    l.add (std::make_unique<P> ("reverbMix", "Reverb Mix", 0.0f, 1.0f, 0.0f));
+    l.add (continuous ("delayTime", "Delay Time", 0.03f, 1.5f, 0.32f));
+    l.add (continuous ("delayFeedback", "Delay Feedback", 0.0f, 0.9f, 0.35f));
+    l.add (continuous ("delayMix", "Delay Mix", 0.0f, 1.0f, 0.0f));
+    l.add (continuous ("reverbSize", "Reverb Size", 0.0f, 1.0f, 0.45f));
+    l.add (continuous ("reverbDamping", "Reverb Damping", 0.0f, 1.0f, 0.5f));
+    l.add (continuous ("reverbMix", "Reverb Mix", 0.0f, 1.0f, 0.0f));
     l.add (std::make_unique<B> ("arpEnabled", "Arpeggiator Enabled", false));
-    l.add (std::make_unique<P> ("arpRate", "Arpeggiator Rate", 0.5f, 24.0f, 8.0f));
-    l.add (std::make_unique<P> ("arpGate", "Arpeggiator Gate", 0.05f, 1.0f, 0.72f));
+    l.add (continuous ("arpRate", "Arpeggiator Rate", 0.5f, 24.0f, 8.0f));
+    l.add (continuous ("arpGate", "Arpeggiator Gate", 0.05f, 1.0f, 0.72f));
     // Stage 2: Character & Expressiveness (작업 4, 1, 3)
-    l.add (std::make_unique<P> ("randomPhase", "Random Phase", 0.0f, 1.0f, 0.0f));
-    l.add (std::make_unique<P> ("driftRate", "Drift Rate", 0.05f, 2.0f, 0.3f));
-    l.add (std::make_unique<P> ("driftDepth", "Drift Depth", 0.0f, 1.0f, 0.0f));
+    l.add (continuous ("randomPhase", "Random Phase", 0.0f, 1.0f, 0.0f));
+    l.add (continuous ("driftRate", "Drift Rate", 0.05f, 2.0f, 0.3f));
+    l.add (continuous ("driftDepth", "Drift Depth", 0.0f, 1.0f, 0.0f));
     l.add (std::make_unique<C> ("arpPattern", "Arpeggiator Pattern", juce::StringArray { "Up", "Down", "Up/Down", "Random" }, 0));
     return l;
 }

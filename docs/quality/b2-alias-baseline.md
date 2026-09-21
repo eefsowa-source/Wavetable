@@ -28,41 +28,52 @@ rationale은 `audio-knowledge/validation/renderer-quality-order-gate.md`와 같�
 `|3*f0 - 48000|` Hz에 나타난다. 선형 경로는 이 위치에 에너지를 만들 수 없으므로,
 여기 있는 에너지는 비선형에서 생성되어 접힌 것이다. 기준선(톤) 대비 더 음수일수록 깨끗하다.
 
-**`measureInharmonicAliasDbc`를 쓰지 않은 이유(중요):** 이 지표는 각 고조파 주변
-±1.5 bin만 legal로 표시하므로 프로브 톤이 정확히 FFT bin 위에 있어야 한다.
-이 제품에서는 불가능하다. **모든 float 파라미터가 0.01 단위로 양자화되기 때문이다**:
-JUCE 8의 `AudioParameterFloat(id, name, min, max, default)` 생성자가
+**`measureInharmonicAliasDbc`를 쓰지 않은 이유:** 이 지표는 각 고조파 주변 ±1.5 bin만
+legal로 표시하므로 프로브 톤이 정확히 FFT bin 위에 있어야 한다. 계측기를 만들 당시에는
+불가능했다. **당시 모든 float 파라미터가 0.01 단위로 양자화되었기 때문이다**: JUCE 8의
+`AudioParameterFloat(id, name, min, max, default)` 생성자가
 `NormalisableRange(min, max, 0.01f)`로 전달한다. `osc1Tune`(±24 semitones)에서
 이 격자는 **1 cent**이고, 10 kHz에서 1 cent는 5.78 Hz로 16384-point 분석의 bin 간격
 2.93 Hz보다 크다. 톤이 0.45 cent 빗나가면 Hann 주엽이 legal bin 밖으로 새어
-오디오가 아무리 깨끗해도 지표가 **-8.7 dBc** 고정값을 보고한다(Task 2에서 실측).
-고조파에서 1.4 kHz 떨어진 밴드를 재면 이 의존성이 사라진다.
+오디오가 아무리 깨끗해도 지표가 **-8.7 dBc** 고정값을 보고했다(Task 2에서 실측).
+
+Task 2b가 이 격자를 제거했으므로 이제는 bin 정렬이 가능하다. 그럼에도 밴드 프록시를
+유지한다: 정렬에 의존하지 않아 더 견고하고, 이미 기준선이 이 방식으로 기록되어 있기
+때문이다. 아래 수치는 Task 2b 이후 재측정한 값이다.
 
 ## 2. 기준선 수치 (현재 단일 품질 경로)
 
 Release, Apple M1 Ultra, macOS 15.7.9. 실행 파일 SHA-256:
-`9939517d161c83c5b81eb3a0a1bf8f85af7e13ec01ec44f1eb46cd5d9e8488fa`.
+`32227731f81f375a5555fc15f6e4a7ec50017adb3dddfbfb6016a918fe22b2b2`.
 
 | 설정 | block 64 | block 127 | block 256 | median |
 | --- | --- | --- | --- | --- |
-| `saturation = 0.15` (제품 기본) | -133.48 dBc | -133.48 dBc | -133.48 dBc | **-133.48 dBc** |
-| `saturation = 1.00` (최대 drive) | -108.92 dBc | -108.91 dBc | -108.92 dBc | **-108.92 dBc** |
-| `saturation = 0.00` (비선형 우회) | — | -151.42 dBc | — | 계측기 바닥 |
+| `saturation = 0.15` (제품 기본) | -133.47 dBc | -133.47 dBc | -133.47 dBc | **-133.47 dBc** |
+| `saturation = 1.00` (최대 drive) | -108.92 dBc | -108.92 dBc | -108.92 dBc | **-108.92 dBc** |
+| `saturation = 0.00` (비선형 우회) | — | -150.67 dBc | — | 계측기 바닥 |
 
 파생 수치:
 
-- drive 민감도: **+24.56 dB** (기본 -> 최대). 계측기가 비선형 깊이를 확실히 분해한다.
-- 계측기 바닥 대비 여유: 기본 경로 **+17.94 dB**, 최대 drive **+42.50 dB**.
-  즉 기본값의 -133.48 dBc는 수치 잡음이 아니라 실제 접힘 에너지다.
+- drive 민감도: **+24.55 dB** (기본 -> 최대). 계측기가 비선형 깊이를 확실히 분해한다.
+- 계측기 바닥 대비 여유: 기본 경로 **+17.20 dB**, 최대 drive **+41.75 dB**.
+  즉 기본값의 -133.47 dBc는 수치 잡음이 아니라 실제 접힘 에너지다.
 - 블록 크기 의존성: 세 블록 모두 0.01 dB 이내. 순서 비교에 충분히 안정적이다.
 - 피치 정확도: 기대 10002.1767 Hz, 실측 10002.1625 Hz -> **-0.0025 cents**.
   (Debug/Release 동일, 0.1 cent 게이트 통과.)
+- 파라미터 해상도: tune 0.070 -> 9996.4029 Hz, tune 0.075 -> 9999.2745 Hz
+  = **0.4972 cents** 간격. Task 2b 이전에는 0.9972 cents(0.01 semitone 스냅)였다.
+
+Task 2b 이전 기록(clean `-133.48`, floor `-151.42`)과의 차이는 최대 0.75 dB이며,
+이는 파라미터 값의 마지막 ULP 차이가 float32 FFT의 수치 바닥을 움직인 결과다.
+판정에 쓰는 수치(민감도 24.5 dB, 순서 비교)는 그대로다.
 
 ## 3. 이 계측기가 보증하는 것 / 보증하지 않는 것
 
 보증:
 
 - 렌더러가 파라미터 격자 위에서 요청 피치에 0.1 cent 이내로 도달한다.
+- float 파라미터가 0.01 단위로 스냅되지 않는다(아래 Task 2b). tune 0.005 semitone
+  변화가 0.5 cent로 그대로 오디오에 도달한다.
 - 같은 시드/설정에서 렌더가 bit-identical로 재현된다.
 - 비선형 drive가 커지면 folded 에너지가 계측 가능하게 증가한다(≥15 dB 게이트).
 
@@ -84,11 +95,28 @@ Release, Apple M1 Ultra, macOS 15.7.9. 실행 파일 SHA-256:
 3. 등급 도입으로 **블록 크기별 지연/품질 선택이 prepare 시점에 확정**되어야 한다
    (파라미터를 prepare 이후에 바꾸는 현재 테스트 방식은 prepare-time 설정에는
    반영되지 않으므로, 등급용 `prepare()` 재호출 경로가 필요하다).
-4. 부수 발견: JUCE `AudioParameterFloat` 5-인자 생성자의 0.01 격자는 이 플러그인의
-   모든 float 파라미터에 적용된다. `delayTime`(0.03..1.5 s)은 **10 ms 단위**,
-   `ampAttack/ampDecay/filterAttack/filterDecay/ampRelease/filterRelease`(최소 0.001 s)는
-   실효 최소값이 0.01 s, `osc1Tune`은 1 cent 단위가 된다. 음질 계획과 별개로
-   판단이 필요한 항목으로 기록한다(범위를 바꾸지 않고 `NormalisableRange`를 명시하면 해결).
+4. ~~부수 발견: JUCE `AudioParameterFloat` 5-인자 생성자의 0.01 격자~~ -> **Task 2b에서
+   해결**. `makeLayout()`이 명시적인 연속 `NormalisableRange`를 넘긴다. 자세한 내용은
+   아래 6절.
+
+## 6. Task 2b — 파라미터 해상도 복원 (완료)
+
+Task 2에서 발견한 0.01 격자를 Plan B 범위에 포함해 수정했다.
+
+- 원인: JUCE 8의 `AudioParameterFloat(id, name, min, max, default)` 생성자가
+  `NormalisableRange(min, max, 0.01f)`로 전달한다. 스냅 단위가 각 파라미터의
+  **자연 단위** 0.01이라 파라미터마다 의미가 달랐다.
+- 영향: `osc1Tune` 1 cent, ADSR 6개 실효 최소 0.01 s(범위 최소 0.001 s 도달 불가),
+  `delayTime` 10 ms, `osc1Pos` 등 1% 스텝.
+- 수정: `Source/PluginProcessor.cpp`의 `makeLayout()`에 연속 범위 팩토리
+  (`NormalisableRange<float>(min, max, 0.0f)`)를 추가하고 float 파라미터 39개에 적용.
+  선형·skew 1이므로 **정규화 <-> 실제값 매핑은 이전과 동일**하고 스냅만 사라진다.
+  따라서 기존 세션/프리셋의 저장값은 그대로 복원된다.
+- RED: `ProcessorQuality` 6개 파라미터 전부 "keeps its requested resolution" 실패,
+  `QualityOrder`에서 tune 0.005 semitone 변화가 **0.9972 cents**로 측정.
+- GREEN: 동일 테스트 통과, 변화량 **0.4972 cents**, Release 11/11 / Debug 통과.
+- 회귀 고정: `Tests/AudioQuality/ProcessorQualityTests.cpp`가 6개 파라미터의 값 보존을,
+  `Tests/AudioQuality/QualityOrderTests.cpp`가 미세 tune이 오디오에 도달함을 검증한다.
 
 ## 5. 재현
 

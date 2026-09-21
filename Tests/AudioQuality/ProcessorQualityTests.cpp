@@ -95,6 +95,34 @@ int main()
             test.expect (processor.parameters.getParameter (id) != nullptr,
                          "unison detune/key-track parameter is registered");
     }
+
+    // Parameter resolution. JUCE's AudioParameterFloat(id, name, min, max,
+    // default) constructor forwards to NormalisableRange(min, max, 0.01f), which
+    // snaps every parameter to a 0.01 step *of its own unit*. Left alone that
+    // silently quantises osc1Tune to 1 cent, the ADSR times to 10 ms (so a 1 ms
+    // attack is unreachable) and the delay time to 10 ms. Each of these values
+    // must survive the round trip through the parameter unchanged.
+    {
+        struct Expectation { const char* id; float value; };
+        const Expectation expectations[] = {
+            { "osc1Tune",   0.07453f },   // 0.75 cent at 10 kHz
+            { "ampAttack",  0.002f },     // unreachable on a 0.01 s grid
+            { "filterDecay", 0.0035f },
+            { "delayTime",  0.1234f },    // unreachable on a 0.01 s grid
+            { "osc1Pos",    0.0745f },
+            { "lfo1Rate",   0.0567f },
+        };
+        HybridWavetableAudioProcessor resolutionProcessor;
+        for (const auto& expectation : expectations)
+        {
+            setPlainParameter (resolutionProcessor, expectation.id, expectation.value);
+            const auto actual = resolutionProcessor.parameters
+                                    .getRawParameterValue (expectation.id)->load();
+            test.expect (std::abs (actual - expectation.value) < 1.0e-4f,
+                         juce::String (expectation.id)
+                             + " keeps its requested resolution (no 0.01 snap)");
+        }
+    }
     // The per-voice PRNG contract is testable without touching the callback.
     bool phasesAreNormalized = true;
     bool phasesAreDistinct = false;

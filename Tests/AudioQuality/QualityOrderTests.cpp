@@ -65,12 +65,12 @@ constexpr int kMidiNote = 123;
 constexpr std::uint32_t kSeed = 0x514f5244u;   // "QORD"
 constexpr std::array<int, 3> kBlockSizes { 64, 127, 256 };
 
-// JUCE 8's AudioParameterFloat(id, name, min, max, default) forwards to
-// NormalisableRange(min, max, 0.01f), so the tune parameter's grid is 0.01
-// semitones (1 cent). Ask only for grid points, and compute the probe frequency
-// from the value the renderer actually receives.
-constexpr float kTuneGridSemitones = 0.01f;
-constexpr double kTargetProbeHz = 10000.0;
+// Probe pitch. This is the nearest 0.01 semitone grid point to a 10 kHz probe,
+// kept because the recorded baseline in docs/quality/b2-alias-baseline.md was
+// measured here. The grid is no longer imposed by the plug-in (Plan B Task 2b
+// made the float parameter ranges continuous), so a finer probe would work too;
+// this value is now a deliberate choice rather than a constraint.
+constexpr float kProbeTuneSemitones = 0.08f;
 
 constexpr float kCleanSaturation = 0.15f;   // product default
 constexpr float kHotSaturation = 1.0f;      // maximum drive
@@ -93,8 +93,7 @@ double noteFrequencyHz()
 
 float probeTuneSemitones()
 {
-    const double requested = 12.0 * std::log2 (kTargetProbeHz / noteFrequencyHz());
-    return (float) (std::round (requested / kTuneGridSemitones) * kTuneGridSemitones);
+    return kProbeTuneSemitones;
 }
 
 double probeFrequencyHz()
@@ -110,7 +109,8 @@ double foldedThirdHarmonicHz()
     return std::abs (3.0 * probeFrequencyHz() - kSampleRate);
 }
 
-void configureAliasTone (HybridWavetableAudioProcessor& processor, float saturation)
+void configureAliasTone (HybridWavetableAudioProcessor& processor, float saturation,
+                         float tuneSemitones)
 {
     const auto set = [&processor] (const char* id, float value)
     {
@@ -126,7 +126,7 @@ void configureAliasTone (HybridWavetableAudioProcessor& processor, float saturat
     set ("osc3Level", 0.0f);
     set ("osc1Pos", 0.0f);
     set ("osc1Unison", 1.0f);
-    set ("osc1Tune", probeTuneSemitones());
+    set ("osc1Tune", tuneSemitones);
     set ("unisonKeyTrack", 0.0f);
 
     // Static, unmodulated path. A moving cutoff or a decaying envelope would add
@@ -172,7 +172,26 @@ juce::AudioBuffer<float> renderAliasTone (float saturation, int blockSize, std::
 
     return audioquality::OfflineRenderer::render (fixture, [saturation] (auto& processor)
     {
-        configureAliasTone (processor, saturation);
+        configureAliasTone (processor, saturation, probeTuneSemitones());
+    });
+}
+
+// Same probe, explicit tune: used by the parameter-resolution check below.
+juce::AudioBuffer<float> renderAliasToneWithTune (float tuneSemitones)
+{
+    audioquality::AudioQualityFixture fixture;
+    fixture.id = "alias-probe-resolution";
+    fixture.sampleRate = kSampleRate;
+    fixture.blockSize = kBlockSizes[1];
+    fixture.channels = 2;
+    fixture.durationSeconds = 0.5;
+    fixture.tailSeconds = 0.0;
+    fixture.randomSeed = kSeed;
+    fixture.midi = { { juce::MidiMessage::noteOn (1, kMidiNote, 0.8f), 0 } };
+
+    return audioquality::OfflineRenderer::render (fixture, [tuneSemitones] (auto& processor)
+    {
+        configureAliasTone (processor, kCleanSaturation, tuneSemitones);
     });
 }
 
@@ -268,9 +287,7 @@ void runInstrumentTests (audioquality::TestHarness& test)
     const double foldedHz = foldedThirdHarmonicHz();
 
     std::printf ("Plan B alias-quality instrument\n");
-    std::printf ("  note %d, requested tune %.5f semitones, grid %.2f -> sent %.2f semitones\n",
-                 kMidiNote, 12.0 * std::log2 (kTargetProbeHz / noteFrequencyHz()),
-                 (double) kTuneGridSemitones, (double) probeTuneSemitones());
+    std::printf ("  note %d, probe tune %.3f semitones\n", kMidiNote, (double) probeTuneSemitones());
     std::printf ("  probe %.4f Hz, folded third harmonic %.4f Hz, FFT %d, warm-up %d, seed 0x%08x\n",
                  expectedHz, foldedHz, 1 << kAnalysisOrder, kWarmupSamples, kSeed);
 
@@ -309,6 +326,25 @@ void runInstrumentTests (audioquality::TestHarness& test)
         const auto second = renderAliasTone (kHotSaturation, kBlockSizes[1], kSeed);
         test.expect (maximumDifference (first, second) == 0.0f,
                      "the renderer is deterministic for a fixed seed and configuration");
+    }
+
+    // Parameter resolution end to end. The probe pitch sits on the tune
+    // parameter's old 0.01 semitone grid; before Task 2b, 0.070 and 0.075
+    // snapped to the same value and rendered identically. A 0.5 cent move must
+    // now reach the audio, otherwise the parameter is still misreporting its
+    // resolution and this whole instrument is measuring a lie.
+    {
+        const auto coarse = renderAliasToneWithTune (0.07f);
+        const auto fine = renderAliasToneWithTune (0.075f);
+        const double coarseHz = measureFrequencyByZeroCrossings (coarse.getReadPointer (0)
+                                                                    + kWarmupSamples, kAnalysisSamples);
+        const double fineHz = measureFrequencyByZeroCrossings (fine.getReadPointer (0)
+                                                                  + kWarmupSamples, kAnalysisSamples);
+        const double cents = 1200.0 * std::log2 (fineHz / coarseHz);
+        std::printf ("  resolution: tune 0.070 -> %.4f Hz, tune 0.075 -> %.4f Hz (%.4f cents apart)\n",
+                     coarseHz, fineHz, cents);
+        test.expect (std::abs (cents - 0.5) < 0.05,
+                     "a 0.005 semitone tune change reaches the audio as 0.5 cent");
     }
 
     std::array<double, kBlockSizes.size()> cleanProxies {};
