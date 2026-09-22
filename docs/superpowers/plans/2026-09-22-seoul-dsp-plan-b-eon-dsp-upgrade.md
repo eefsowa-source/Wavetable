@@ -328,13 +328,17 @@ CTest 전체 결과.
 - Create: `docs/quality/b-plan-report.md`
 - Create: `docs/quality/b-task-matrices.md`
 
-- [ ] **Step 1:** 48 kHz / block 64·128·512 매트릭스와 DSP 변경 게이트(44.1, 48, 88.2, 96,
-      176.4, 192 kHz x block 16..2048)를 실행하고 태스크별 before/after를 표로 남긴다.
-- [ ] **Step 2:** 모든 출력 finite, 무음 RMS, DC, peak, pitch/cents, tail, state restore
-      게이트를 재확인한다.
-- [ ] **Step 3:** `CpuBench`(등급별, 1/8/32/128 voice)와 latency 변화를 기록한다.
-- [ ] **Step 4:** 남은 게이트를 명시적으로 "미검증"으로 남긴다: Ableton/REAPER 로드, pluginval,
-      auval, 실청취. 이들은 Plan A3 증거 체계로만 닫는다.
+- [x] **Step 1:** 48 kHz / block 64·128·512와 DSP 변경 게이트(44.1, 48, 88.2, 96,
+      176.4, 192 kHz x block 16..2048)를 실행하고 [b-task-matrices.md](../quality/b-task-matrices.md)에
+      표로 남겼다.
+- [x] **Step 2:** finite, 무음, DC, peak, pitch/cents, tail, state restore 게이트를
+      기존 CTest와 전체 offline safety matrix로 재확인했다.
+- [x] **Step 3:** `CpuBench` 등급별/슬로프별 결과와 47-sample fixed latency를 기록했다.
+- [x] **Step 4:** 남은 게이트를 명시적으로 "미검증"으로 남겼다: Ableton/REAPER 로드,
+      pluginval, auval, 실청취. [b-plan-report.md](../quality/b-plan-report.md)에 분리했다.
+
+**증거:** [b-plan-report.md](../quality/b-plan-report.md),
+[b-task-matrices.md](../quality/b-task-matrices.md).
 
 ## 5. 완료 조건 (Plan B acceptance 후보)
 
