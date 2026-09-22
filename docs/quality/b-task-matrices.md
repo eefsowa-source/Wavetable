@@ -43,6 +43,16 @@ operational evidence only; extra CPU is not a sound-quality result.
 The saturation stage keeps its fixed reported latency of 47 samples. The
 output DC blocker and denormal guard add no host-reported latency.
 
+## Host validation
+
+The installed Release host results are recorded in
+[b7-host-validation.md](b7-host-validation.md). VST3 pluginval strictness 10
+and standalone AU `auval` passed. REAPER loaded the AU editor while its audio
+device was closed. Ableton exposed the VST3 browser entry, but the current
+pre-existing set did not isolate a distinct SEOUL DSP device, so clean
+insertion remains pending. These host observations do not replace DAW
+automation, state-recall, dropout, or level-matched listening gates.
+
 ## Artifact identity
 
 | artifact | SHA-256 |
