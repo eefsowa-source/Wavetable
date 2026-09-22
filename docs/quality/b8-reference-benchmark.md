@@ -21,11 +21,9 @@ The set was at `48.0 kHz`. The browser inventory was then exercised without
 discarding or saving the user's set: a new `3-Serum` MIDI track contains the
 `Serum` device, and a new `4-Vital` MIDI track contains the `Vital` device.
 The first `Serum` search result was `SerumFX`, which remains on the pre-existing
-Track 2 and is not used as the synth reference. No reference MIDI was played
-and no reference audio was rendered from these devices yet. The existing MIDI
-clip was copied to the Serum and Vital tracks for staging, but it carries the
-source track's automation lanes; it is not yet a clean MIDI-only comparison
-fixture.
+Track 2 and is not used as the synth reference. The existing MIDI clip was
+copied to the Serum and Vital tracks for staging, but the render gate below
+uses a separate clean MIDI-only fixture with no automation.
 
 A separate clean one-note clip was then created in the Session View: C4,
 1/16-note duration, velocity 100, with no automation. It was copied to the
@@ -44,6 +42,29 @@ readings prove host playback and signal flow for the clean clip and establish
 a practical level-matched starting point. They do not establish a quality
 ranking or replace rendered-file analysis and blind listening.
 
+## Rendered reference stems
+
+The clean one-note fixture was rendered from Ableton Arrangement one track at
+a time on 2026-09-22. The render selection started at `1.1.1` and covered the
+one-bar fixture. Ableton Live was `12.4.5 (2026-08-19_225ce5e356)`, the set was
+at `48.0 kHz`, and the export format was stereo WAV, `24-bit`, with triangular
+dither, Normalize Off, Convert Mono Off, Return/Main Off, and Render as Loop
+Off. The three files are retained under `Build/quality-reference-stems/` and
+the complete file analysis is in
+`docs/quality/b8-reference-stems-analysis.md`.
+
+| stem | file size | duration | peak | RMS | SHA-256 |
+| --- | ---: | ---: | ---: | ---: | --- |
+| Serum | 576,080 bytes | 2.000 s | -9.684 dBFS | -29.452 dBFS | `8412251c194ac28bcc8667827e89a80bb7e53cd9004b285aadc70880590de7f9` |
+| Vital | 576,080 bytes | 2.000 s | -9.040 dBFS | -28.619 dBFS | `26ce240fbc0dec1648a6016c3ad3458e8b7f19d792278d97f87e447f96171034` |
+| SEOUL DSP | 576,080 bytes | 2.000 s | -9.425 dBFS | -23.122 dBFS | `c75c3b6baef97a7f78236a6c2c4d7f374a04c9f1cfedac050d99a813c146c8fc` |
+
+All three renders are 2-channel, 48,000-frame files with a measured DC mean
+within 0.000025 of zero. These values confirm the exported signal and the
+level-matched peak range; they do not establish a sonic quality ranking. The
+render capture did not record a verified Ableton buffer-size value, so buffer
+size remains open for the next repeatable measurement pass.
+
 ## Comparison protocol
 
 The first comparison pass should use a clean Ableton set with one reference
@@ -52,10 +73,9 @@ sample rate, buffer, MIDI clip, note velocity, pitch, oscillator waveform,
 phase-reset rule, and output gain. Match short-term loudness within 0.1 dB
 before listening; otherwise the louder instrument will bias the result.
 
-The current set is therefore only a host-insertion and staging check. The next
-render gate must use a clean MIDI-only fixture with automation removed or
-explicitly mapped per instrument, then solo and render each instrument as a
-separate stem.
+The clean MIDI-only fixture and separate solo renders are now complete. The
+next gate is a level-matched blind listening pass over these exact files,
+followed by the wider sample-rate and buffer matrix below.
 
 Capture the following cases at 44.1, 48, and 96 kHz with buffers 64 and 512:
 
