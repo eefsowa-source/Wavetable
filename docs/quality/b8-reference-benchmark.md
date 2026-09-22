@@ -22,7 +22,10 @@ discarding or saving the user's set: a new `3-Serum` MIDI track contains the
 `Serum` device, and a new `4-Vital` MIDI track contains the `Vital` device.
 The first `Serum` search result was `SerumFX`, which remains on the pre-existing
 Track 2 and is not used as the synth reference. No reference MIDI was played
-and no reference audio was rendered from these devices yet.
+and no reference audio was rendered from these devices yet. The existing MIDI
+clip was copied to the Serum and Vital tracks for staging, but it carries the
+source track's automation lanes; it is not yet a clean MIDI-only comparison
+fixture.
 
 ## Comparison protocol
 
@@ -31,6 +34,11 @@ instrument and one SEOUL DSP instance on separate MIDI tracks. Use the same
 sample rate, buffer, MIDI clip, note velocity, pitch, oscillator waveform,
 phase-reset rule, and output gain. Match short-term loudness within 0.1 dB
 before listening; otherwise the louder instrument will bias the result.
+
+The current set is therefore only a host-insertion and staging check. The next
+render gate must use a clean MIDI-only fixture with automation removed or
+explicitly mapped per instrument, then solo and render each instrument as a
+separate stem.
 
 Capture the following cases at 44.1, 48, and 96 kHz with buffers 64 and 512:
 
