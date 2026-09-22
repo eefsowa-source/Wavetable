@@ -16,7 +16,6 @@ float filterEnvelopeCutoff (float baseCutoffHz, float envelopeAmount,
 SynthVoice::SynthVoice (juce::AudioProcessorValueTreeState& p, std::uint32_t deterministicSeed)
     : params (p), random (deterministicSeed)
 {
-    filter.setType (juce::dsp::StateVariableTPTFilterType::lowpass);
 }
 
 float SynthVoice::nextRandom01() noexcept
@@ -29,10 +28,8 @@ void SynthVoice::prepare (double sr, int blockSize, const std::atomic<const Wave
     sampleRate = sr;
     tableSource = wt;
     osc1Bank.prepare (sr); osc2Bank.prepare (sr); osc3Bank.prepare (sr);
-    juce::dsp::ProcessSpec spec { sr, (juce::uint32) blockSize, 2 };
-    filter.prepare (spec);
-    filter2.prepare (spec);
-    filter.reset(); filter2.reset();
+    voiceFilterLeft.reset();
+    voiceFilterRight.reset();
     ampEnv.setSampleRate (sr); filterEnv.setSampleRate (sr);
     saturationStage.prepare (blockSize);
     preSaturationBuffer.setSize (2, juce::jmax (1, blockSize), false, true, true);
@@ -146,9 +143,7 @@ void SynthVoice::renderNextBlock (juce::AudioBuffer<float>& output, int start, i
     const float keyTrack = params.getRawParameterValue ("unisonKeyTrack") != nullptr ? params.getRawParameterValue ("unisonKeyTrack")->load() : 0.0f;
     const float keyTrackScale = juce::jlimit (0.5f, 2.0f, std::exp2 (keyTrack * (float) (midiNote - 60) / 48.0f));
     
-    // Note: filter cutoff & resonance will be updated per-sample using smoothed values
-    filter.setType (type == 1 ? juce::dsp::StateVariableTPTFilterType::highpass : type == 2 ? juce::dsp::StateVariableTPTFilterType::bandpass : juce::dsp::StateVariableTPTFilterType::lowpass);
-    filter2.setType (type == 1 ? juce::dsp::StateVariableTPTFilterType::highpass : type == 2 ? juce::dsp::StateVariableTPTFilterType::bandpass : juce::dsp::StateVariableTPTFilterType::lowpass);
+    // Note: filter cutoff & resonance are updated per-sample from the smoothed values.
     const auto* table = tableSource != nullptr
                           ? tableSource->load (std::memory_order_acquire)
                           : nullptr;
@@ -220,10 +215,8 @@ void SynthVoice::renderNextBlock (juce::AudioBuffer<float>& output, int start, i
         const float modulatedCutoff = SeoulDSPQuality::filterEnvelopeCutoff (cutoffHz, filterEnvAmount,
                                                                               fenv, (float) sampleRate,
                                                                               lfoCutoffOctaves);
-        filter.setCutoffFrequency (modulatedCutoff);
-        filter.setResonance (resonance);
-        filter2.setCutoffFrequency (modulatedCutoff);
-        filter2.setResonance (resonance);
+        voiceFilterLeft.setParams (slope, type, modulatedCutoff, resonance, sampleRate);
+        voiceFilterRight.setParams (slope, type, modulatedCutoff, resonance, sampleRate);
         float osc1Left = 0.0f, osc1Right = 0.0f;
         float osc2Left = 0.0f, osc2Right = 0.0f;
         float osc3Left = 0.0f, osc3Right = 0.0f;
@@ -239,15 +232,9 @@ void SynthVoice::renderNextBlock (juce::AudioBuffer<float>& output, int start, i
                                 osc3SpreadValue, osc3Left, osc3Right);
         float left = (osc1Left * l1 + osc2Left * l2 + osc3Left * l3) / 3.0f * inGain;
         float right = (osc1Right * l1 + osc2Right * l2 + osc3Right * l3) / 3.0f * inGain;
-        left = filter.processSample (0, left);
+        left = voiceFilterLeft.process (left);
         if (outRight != nullptr)
-            right = filter.processSample (1, right);
-        if (slope >= 2)
-        {
-            left = filter2.processSample (0, left);
-            if (outRight != nullptr)
-                right = filter2.processSample (1, right);
-        }
+            right = voiceFilterRight.process (right);
         const float vcaGain = env * level * 0.25f;
         const float vcaLeft = left * vcaGain;
         const float vcaRight = right * vcaGain;

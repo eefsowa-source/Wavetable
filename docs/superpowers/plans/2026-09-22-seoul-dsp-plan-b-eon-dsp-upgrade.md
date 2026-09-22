@@ -3,8 +3,8 @@
 > **For agentic workers:** 각 태스크는 RED -> GREEN 순서로 진행하고, 태스크 단위로 커밋한다.
 > 체크박스(`- [ ]`)는 실행 시점에 갱신한다.
 
-**작성일:** 2026-09-22  
-**상태:** IN PROGRESS (Task 1, 2, 2b, 3, 3b 완료 / 4, 5, 6, 7 남음, 2026-09-22)
+**작성일:** 2026-09-22
+**상태:** IN PROGRESS (Task 1, 2, 2b, 3, 3b, 4-slope 완료 / 4-drive, 5, 6, 7 남음, 2026-09-22)
 **대상 DSP 코어:** `eon_dsp` rev `c8e71f3` (canonical: `~/Desktop/EON LLM wiki/EON Audio Plugin/eon_dsp`)  
 **대상 제품:** SEOUL DSP (JUCE 8.0.14 wavetable synth, `HybridWavetable`)
 
@@ -256,24 +256,34 @@ schema 3 마이그레이션이 구형 state의 누락 값을 Normal로 채운다
 
 **Files**
 
+- Create: `Source/DSP/SlopeFilter.h` (실제 4단 슬로프, eon TPT)
 - Modify: `Source/DSP/SynthVoice.h`, `Source/DSP/SynthVoice.cpp`
 - Modify: `Source/PluginProcessor.cpp` (choice 라벨 정정)
 - Modify: `Source/PluginEditor.cpp` (combo 아이템 리스트 정정)
 - Modify: `Tests/AudioQuality/ProcessorQualityTests.cpp`, `Tests/WavetableTests.cpp`
 
-- [ ] **Step 1 (RED):** `slope 0`과 `slope 1` 렌더가 bit-identical임을 고정하는 회귀 테스트가
+- [x] **Step 1 (RED):** `slope 0`과 `slope 1` 렌더가 bit-identical임을 고정하는 회귀 테스트가
       실패하도록 기대치를 "서로 다른 기울기"로 바꾼다. 동시에 `filterDrive = 0 dB`에서
-      기존 클린 경로와 일치해야 한다는 회귀를 세운다.
+      기존 클린 경로와 일치해야 한다는 회귀를 세운다. RED 실측: 3 kHz cutoff /
+      resonance 0.9에서 `slope0 vs slope1 max difference = 0.00000000`.
 - [ ] **Step 2:** `eon::Solvers`(`newtonScalar`, `lambertW0`) + `eon::Zdf`를 사용해
       포화를 **필터 피드백 루프 안**으로 옮긴다. tanh-in-loop는 Lambert W 해석해 또는
       Newton 반복으로 푼다.
-- [ ] **Step 3:** slope를 실제로 구현한다. `OnePoleTPT`(6 dB) + `SvfTPT`(12 dB) 조합으로
+- [x] **Step 3:** slope를 실제로 구현한다. `OnePoleTPT`(6 dB) + `SvfTPT`(12 dB) 조합으로
       6/12/18/24 dB/oct를 만들고, processor/editor 라벨을 실제 DSP와 일치시킨다(§7 결정 2).
-- [ ] **Step 4 (GREEN):** 각 slope의 실측 기울기가 목표값의 ±10% 이내,
-      `filterDrive = 0 dB`에서 기존 렌더와 동일(클린), `filterDrive = +24 dB`에서 THD 상승,
-      그리고 resonance 자기진동이 유한하게 유지됨.
-- [ ] **Step 5:** cutoff 변조(엔벨로프/LFO, per-sample)와 `filterType` 3종을 새 구조에서
-      재확인하고, A2의 cutoff 게이트를 그대로 통과시킨다. 커밋.
+      **실행 중 변경:** JUCE SVF 캐스케이드를 늘리는 대신 `Source/DSP/SlopeFilter.h`
+      하나로 네 기울기를 만든다(1-pole / SvfTPT / SvfTPT+1-pole / SvfTPT+SvfTPT).
+      라벨은 processor와 editor 모두 `6/12/18/24 dB/oct`로 정정했다. 근거는
+      [b4-filter-slopes.md](../quality/b4-filter-slopes.md).
+- [x] **Step 4 (GREEN, slope 부분):** 실측 기울기 5.99 / 12.10 / 18.10 / 24.22 dB/oct로
+      라벨과 0.25 dB 이내. 전 슬로프 x 전 타입이 최대 resonance에서 유한·유계. Release/Debug
+      CTest 11/11. `filterDrive` 비선형화와 그 THD 게이트는 Step 2와 함께 남는다.
+- [x] **Step 5:** cutoff 변조(엔벨로프/LFO, per-sample)와 `filterType` 3종을 새 구조에서
+      재확인했다: `SlopeFilter::setParams`가 샘플마다 호출되고, ProcessorSmoke의 cutoff/
+      envelope/192 kHz/DC 게이트가 그대로 통과한다. `CpuBench`에 슬로프 인자를 추가했다.
+
+**증거:** [b4-filter-slopes.md](../quality/b4-filter-slopes.md) (이전 상태 표, 실측 기울기,
+CPU, resonance 범위 미수정 사실), Release/Debug `ctest` 11/11, `CpuBench 1 0..3`.
 
 ### Task 5 — 아날로그 컬러 단계 (조건부, Task 3/4 이후에만)
 
@@ -337,6 +347,8 @@ schema 3 마이그레이션이 구형 state의 누락 값을 Normal로 채운다
 
 1. `saturationQuality`: **결정 완료.** 기본 Normal, 커스텀 UI 비노출, 호스트 파라미터 제공.
 2. slope 라벨을 `6/12/18/24 dB/oct`로 정정할지(실제 DSP와 일치), `8 dB` 근사 표기를
-   유지할지. 기본안: `6/12/18/24`로 정정.
+   유지할지. **결정 완료:** `6/12/18/24`로 정정(processor/editor 동시).
 3. Task 5 아날로그 컬러 단계를 이번 Plan B 범위에 포함할지, 별도 Plan으로 미룰지.
    기본안: Task 3/4 완료 후 조건부 진행.
+4. `resonance` 파라미터를 실제로 걸리는 범위로 넓힐지. 현재 0.1~1.0이 Q로 직결되어
+   최대에서도 Q = 1.0이라 자기발진이 불가능하다. 모든 프리셋 톤이 바뀌므로 미결.

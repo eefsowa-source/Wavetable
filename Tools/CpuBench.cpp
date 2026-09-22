@@ -23,6 +23,7 @@ struct BenchResult
 {
     std::string scenario;
     std::string saturationQuality;
+    int filterSlope = 3;
     int voices = 0;
     double audioSeconds = 0.0;
     std::vector<double> runMilliseconds;
@@ -34,7 +35,8 @@ void setPlainParameter (HybridWavetableAudioProcessor& processor, const char* id
         parameter->setValueNotifyingHost (parameter->convertTo0to1 (value));
 }
 
-void configureWorstCasePatch (HybridWavetableAudioProcessor& processor, int saturationQuality)
+void configureWorstCasePatch (HybridWavetableAudioProcessor& processor, int saturationQuality,
+                               int filterSlope)
 {
     setPlainParameter (processor, "osc1Level", 1.0f);
     setPlainParameter (processor, "osc2Level", 1.0f);
@@ -51,6 +53,7 @@ void configureWorstCasePatch (HybridWavetableAudioProcessor& processor, int satu
     setPlainParameter (processor, "cutoff", 12000.0f);
     setPlainParameter (processor, "saturation", 1.0f);
     setPlainParameter (processor, "saturationQuality", (float) saturationQuality);
+    setPlainParameter (processor, "filterSlope", (float) filterSlope);
     setPlainParameter (processor, "filterDrive", 12.0f);
     setPlainParameter (processor, "lfo1Rate", 5.0f);
     setPlainParameter (processor, "lfo1Depth", 0.5f);
@@ -64,14 +67,15 @@ void configureWorstCasePatch (HybridWavetableAudioProcessor& processor, int satu
 }
 
 BenchResult runScenario (const std::string& scenario, int voiceCount,
-                         double audioSeconds, std::uint32_t seed, int saturationQuality)
+                         double audioSeconds, std::uint32_t seed, int saturationQuality,
+                         int filterSlope)
 {
     constexpr double sampleRate = 48000.0;
     constexpr int blockSize = 64;
     HybridWavetableAudioProcessor processor (seed);
     processor.setBusesLayout ({ {}, juce::AudioChannelSet::stereo() });
     processor.prepareToPlay (sampleRate, blockSize);
-    configureWorstCasePatch (processor, saturationQuality);
+    configureWorstCasePatch (processor, saturationQuality, filterSlope);
 
     const int totalSamples = (int) (audioSeconds * sampleRate);
     std::vector<int> notes ((size_t) voiceCount);
@@ -103,6 +107,7 @@ BenchResult runScenario (const std::string& scenario, int voiceCount,
     result.scenario = scenario;
     result.saturationQuality = std::array<const char*, 3> { "Eco", "Normal", "High" }
                                    [(size_t) saturationQuality];
+    result.filterSlope = filterSlope;
     result.voices = voiceCount;
     result.audioSeconds = audioSeconds;
     for (int run = 0; run < 3; ++run)
@@ -122,6 +127,7 @@ juce::var resultToVar (const BenchResult& result)
     auto* object = new juce::DynamicObject();
     object->setProperty ("scenario", juce::String (result.scenario));
     object->setProperty ("saturationQuality", juce::String (result.saturationQuality));
+    object->setProperty ("filterSlope", result.filterSlope);
     object->setProperty ("voices", result.voices);
     object->setProperty ("audioSeconds", result.audioSeconds);
     juce::Array<juce::var> runs;
@@ -139,8 +145,9 @@ int main (int argc, char** argv)
 {
     const juce::ScopedJuceInitialiser_GUI juceInitialiser;
     const int saturationQuality = argc > 1 ? juce::jlimit (0, 2, std::atoi (argv[1])) : 1;
-    const auto solo = runScenario ("solo-unison8", 1, 2.0, 0x53454f55u, saturationQuality);
-    const auto dense = runScenario ("dense16-unison8", 16, 2.0, 0x53454f55u, saturationQuality);
+    const int filterSlope = argc > 2 ? juce::jlimit (0, 3, std::atoi (argv[2])) : 3;
+    const auto solo = runScenario ("solo-unison8", 1, 2.0, 0x53454f55u, saturationQuality, filterSlope);
+    const auto dense = runScenario ("dense16-unison8", 16, 2.0, 0x53454f55u, saturationQuality, filterSlope);
     juce::Array<juce::var> results;
     results.add (resultToVar (solo));
     results.add (resultToVar (dense));

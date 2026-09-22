@@ -45,6 +45,76 @@ float maximumDifference (const juce::AudioBuffer<float>& a, const juce::AudioBuf
     return result;
 }
 
+// Steady one-oscillator tone through the low-pass at the requested slope.
+// The two probe pitches used below sit more than three octaves above the 60 Hz
+// corner, where the asymptote has settled and the damping term cannot bend the
+// measured number.
+juce::AudioBuffer<float> renderSlopeTone (int slope, int type, float tuneSemitones,
+                                          float resonance = 1.0f)
+{
+    audioquality::AudioQualityFixture fixture;
+    fixture.id = "filter-slope-tone";
+    fixture.durationSeconds = 0.5;
+    fixture.tailSeconds = 0.0;
+    fixture.randomSeed = 400u;
+    fixture.midi = { { juce::MidiMessage::noteOn (1, 60, 0.8f), 0 } };
+    return audioquality::OfflineRenderer::render (fixture, [=] (auto& processor)
+    {
+        const auto set = [&] (const char* id, float value)
+        {
+            if (auto* parameter = processor.parameters.getParameter (id))
+                parameter->setValueNotifyingHost (parameter->convertTo0to1 (value));
+        };
+        set ("osc1Level", 1.0f);
+        set ("osc2Level", 0.0f);
+        set ("osc3Level", 0.0f);
+        set ("osc1Pos", 0.0f);
+        set ("osc1Unison", 1.0f);
+        set ("osc1Tune", tuneSemitones);
+        set ("unisonKeyTrack", 0.0f);
+        set ("filterType", (float) type);
+        set ("filterSlope", (float) slope);
+        set ("cutoff", 60.0f);
+        // Maximum resonance keeps the damping term small, so the octave drop
+        // that comes out is the filter order rather than its Q.
+        set ("resonance", resonance);
+        set ("filterDrive", 0.0f);
+        set ("filterEnvAmount", 0.0f);
+        set ("filterAttack", 0.001f);
+        set ("filterDecay", 0.001f);
+        set ("filterSustain", 1.0f);
+        set ("saturation", 0.0f);
+        set ("lfo1Depth", 0.0f);
+        set ("lfo2Depth", 0.0f);
+        set ("driftDepth", 0.0f);
+        set ("ampAttack", 0.001f);
+        set ("ampDecay", 0.001f);
+        set ("ampSustain", 1.0f);
+        set ("delayMix", 0.0f);
+        set ("reverbMix", 0.0f);
+        set ("masterWidth", 1.0f);
+        set ("output", 0.0f);
+    });
+}
+
+// RMS of the settled second half, so the attack and any envelope motion stay
+// out of the measurement window.
+double tailRms (const juce::AudioBuffer<float>& buffer)
+{
+    const int total = buffer.getNumSamples();
+    const int first = total / 2;
+    double sum = 0.0;
+    int count = 0;
+    for (int channel = 0; channel < buffer.getNumChannels(); ++channel)
+        for (int sample = first; sample < total; ++sample)
+        {
+            const double value = (double) buffer.getSample (channel, sample);
+            sum += value * value;
+            ++count;
+        }
+    return count > 0 ? std::sqrt (sum / (double) count) : 0.0;
+}
+
 juce::AudioBuffer<float> renderWithSaturation (float saturation)
 {
     audioquality::AudioQualityFixture fixture;
@@ -199,6 +269,7 @@ int main()
     test.expect (maximumDifference (renderWithSaturation (0.0f), renderWithSaturation (0.9f)) > 1.0e-4f,
                  "saturation drive changes the rendered signal (bypass path stays active)");
 
+
     const auto dry = HybridWavetableAudioProcessor::calculateDelayMixGains (0.0f);
     const auto half = HybridWavetableAudioProcessor::calculateDelayMixGains (0.5f);
     const auto wet = HybridWavetableAudioProcessor::calculateDelayMixGains (1.0f);
@@ -220,5 +291,64 @@ int main()
                  "negative key-track scales detune inversely");
     test.expect (keyScale (1.0f, 24) < 1.0f && keyScale (1.0f, 108) > 1.0f,
                  "positive key-track scales detune with key");
+    // Real slope gate (Plan B Task 4). Every index must attenuate by the number
+    // its label advertises. The measurement is the drop between two tones an
+    // octave apart (523 Hz and 1046 Hz against a 60 Hz corner), so the number is
+    // the filter order and not a level offset.
+    {
+        constexpr double kProbeTuneLow = 12.0f;   // 523.25 Hz
+        constexpr double kProbeTuneHigh = 24.0f;  // 1046.50 Hz
+        struct SlopeExpectation { int index; double dBPerOctave; };
+        const SlopeExpectation expectations[] = { { 0, 6.0 }, { 1, 12.0 }, { 2, 18.0 }, { 3, 24.0 } };
+        constexpr int slopeCount = 4;
+        std::array<juce::AudioBuffer<float>, slopeCount> lowTones, highTones;
+        for (int i = 0; i < slopeCount; ++i)
+        {
+            lowTones[(size_t) i] = renderSlopeTone (expectations[i].index, 0, (float) kProbeTuneLow);
+            highTones[(size_t) i] = renderSlopeTone (expectations[i].index, 0, (float) kProbeTuneHigh);
+        }
+        // The selector has to change the audio before its numbers mean anything:
+        // before Task 4 indices 0/1 and 2/3 rendered bit-identical samples.
+        for (int i = 1; i < slopeCount; ++i)
+            test.expect (maximumDifference (lowTones[(size_t) (i - 1)], lowTones[(size_t) i]) > 1.0e-4f,
+                         juce::String ("filter slope ") + juce::String (i - 1)
+                             + " and " + juce::String (i) + " render different audio");
+        for (int i = 0; i < slopeCount; ++i)
+        {
+            const auto measured = -20.0 * std::log10 (tailRms (highTones[(size_t) i])
+                                                       / tailRms (lowTones[(size_t) i]));
+            std::printf ("  slope %d: measured %.2f dB/oct (label %.0f)\n",
+                         expectations[i].index, measured, expectations[i].dBPerOctave);
+            test.expect (std::abs (measured - expectations[i].dBPerOctave) < 1.5,
+                         juce::String ("filter slope ") + juce::String (expectations[i].index)
+                            + " rolls off at " + juce::String (expectations[i].dBPerOctave, 0)
+                            + " dB/oct within 1.5 dB");
+        }
+    }
+
+    // Resonance safety across the whole matrix. The TPT sections are
+    // unconditionally stable, so this guards against a mis-set coefficient
+    // rather than sweeping the knob; the resonance range itself is reported in
+    // docs/quality/b4-filter-slopes.md.
+    {
+        bool allFinite = true;
+        bool allBounded = true;
+        for (int slope = 0; slope < 4; ++slope)
+            for (int type = 0; type < 3; ++type)
+            {
+                const auto rendered = renderSlopeTone (slope, type, 0.0f);
+                for (int channel = 0; channel < rendered.getNumChannels(); ++channel)
+                    for (int sample = 0; sample < rendered.getNumSamples(); ++sample)
+                    {
+                        const auto value = rendered.getSample (channel, sample);
+                        allFinite &= std::isfinite (value);
+                        allBounded &= std::abs (value) < 8.0f;
+                    }
+            }
+        test.expect (allFinite, "every slope and filter type renders finite output");
+        test.expect (allBounded,
+                     "every slope and filter type stays below +18 dBFS at maximum resonance");
+    }
+
     return test.result();
 }

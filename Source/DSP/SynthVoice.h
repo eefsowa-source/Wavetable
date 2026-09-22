@@ -3,6 +3,7 @@
 #include "WavetableOscillator.h"
 #include "RealtimeRandom.h"
 #include "SaturationStage.h"
+#include "SlopeFilter.h"
 #include "UnisonBank.h"
 #include <cstdint>
 
@@ -47,8 +48,10 @@ private:
     juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> smoothedWavetable2;
     juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> smoothedWavetable3;
     juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> smoothedFilterEnvAmount;
-    juce::dsp::StateVariableTPTFilter<float> filter;
-    juce::dsp::StateVariableTPTFilter<float> filter2;
+    // Four real slopes over the eon TPT primitives. Replaced the JUCE SVF pair,
+    // whose two-stage cascade was the only way to change the slope and whose
+    // resonance parameter was a Q of at most 1.0 (see SlopeFilter.h).
+    SlopeFilter voiceFilterLeft, voiceFilterRight;
     juce::ADSR ampEnv, filterEnv;
     juce::ADSR::Parameters ampParams, filterParams;
     double sampleRate = 44100.0;

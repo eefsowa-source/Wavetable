@@ -6,8 +6,8 @@
 
 - `Tools/CpuBench.cpp`: 실제 `processBlock`을 48 kHz / 64-sample / 스테레오로 2초 렌더. 워밍업 1회 + 측정 3회, 중앙값 보고.
   - 시나리오: `solo-unison8` (보이스 1), `dense16-unison8` (보이스 16, saturation/drive/LFO/drift 최대)
-- 실행: `cmake --build Build-Release --target CpuBench -j 8 && Build-Release/CpuBench [0|1|2]`
-  (`0=Eco`, `1=Normal`, `2=High`, 생략 시 Normal)
+- 실행: `cmake --build Build-Release --target CpuBench -j 8 && Build-Release/CpuBench [quality] [slope]`
+  (quality `0=Eco`, `1=Normal`, `2=High`, 생략 시 Normal; slope `0..3` = 6/12/18/24 dB/oct, 생략 시 3)
 
 ## 결과 (Apple Silicon 로컬, Release, 동일 조건 3회 중앙값)
 
@@ -20,10 +20,14 @@
 | Plan B Task 3b Eco | 81.5 ms | 1268.9 ms | 1.58x | 2x + legacy curve |
 | Plan B Task 3b Normal (default) | 85.8 ms | 1310.5 ms | 1.53x | 2x + ADAA1 |
 | Plan B Task 3b High | 103.1 ms | 1629.1 ms | 1.23x | 4x + ADAA1 |
+| Plan B Task 4 slope 0 (6 dB/oct) | 77.6 ms | 1236.8 ms | 1.62x | eon TPT 1-pole |
+| Plan B Task 4 slope 1 (12 dB/oct) | 78.5 ms | 1214.5 ms | 1.65x | eon SvfTPT 1단 |
+| Plan B Task 4 slope 3 (24 dB/oct, 기본) | 79.2 ms | 1231.2 ms | 1.62x | SvfTPT 2단 |
 
 - dense 시나리오는 saturation 최대이므로 새추레이션 스킵의 이득이 없고 노이즈 범위 내다. 스킵 이득은 드라이브 0 패치에서 발생한다.
 - Plan B Task 3은 Phase 1/2에서 얻은 절감분을 음질로 되돌려 썼다. dense16은 원래 baseline(1293.0 ms)보다 2.7% 느린 수준이고, 대신 folded alias가 -108.9 dBc에서 측정 바닥(-156.5 dBc)까지 내려갔다. 이 비용은 새추레이션 스테이지의 ADAA(샘플당 지수/로그) + half-band FIR에서 나온다.
 - Task 3b 세 등급은 같은 빌드에서 `CpuBench 0/1/2`로 연속 측정했다. dense16 기준 Eco는 Normal보다 약 3% 빠르고 High는 약 24% 느리다. 세 등급 모두 10 kHz 접힘 proxy의 -150 dBc 상한을 통과하므로 High의 추가 CPU를 alias 수치 개선으로 해석하지 않는다.
+- Task 4에서 필터를 JUCE SVF 2개에서 `SlopeFilter`(eon TPT, 샘플당 `tan` 1회 공유)로 교체한 뒤 슬로프별로 측정했다. 세 슬로프 모두 Task 3b Normal 기록(85.8 / 1310.5 ms)보다 낮다 — JUCE SVF가 두 인스턴스에서 각자 `tan`을 계산하던 비용이 사라진 결과다. 별도 실행 회차이므로 수 ms 차이는 실행 변동으로 취급한다(상세: [b4-filter-slopes.md](b4-filter-slopes.md)).
 
 ## 변경 내용
 

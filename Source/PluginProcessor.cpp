@@ -117,7 +117,10 @@ static juce::AudioProcessorValueTreeState::ParameterLayout makeLayout()
     }
     l.add (continuous ("unisonKeyTrack", "Unison Key Track", -1.0f, 1.0f, 0.0f));
     l.add (std::make_unique<C> ("filterType", "Filter Type", juce::StringArray { "Low-pass", "High-pass", "Band-pass" }, 0));
-    l.add (std::make_unique<C> ("filterSlope", "Filter Slope", juce::StringArray { "12 dB/oct", "12 dB/oct", "24 dB/oct", "24 dB/oct" }, 3));
+    // Indices 0..3 are 6/12/18/24 dB/oct over SlopeFilter. The old list said
+    // 12/12/24/24 while the editor said 8/12/18/24; both disagreed with the DSP.
+    l.add (std::make_unique<C> ("filterSlope", "Filter Slope",
+                                juce::StringArray { "6 dB/oct", "12 dB/oct", "18 dB/oct", "24 dB/oct" }, 3));
     l.add (continuous ("cutoff", "Cutoff", 20.0f, 20000.0f, 12000.0f));
     l.add (continuous ("resonance", "Resonance", 0.1f, 1.0f, 0.25f));
     l.add (continuous ("filterDrive", "Filter Drive", -12.0f, 24.0f, 0.0f));

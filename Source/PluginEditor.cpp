@@ -525,7 +525,8 @@ HybridWavetableAudioProcessorEditor::HybridWavetableAudioProcessorEditor (Hybrid
     filterType.addItemList ({ "Low-pass", "High-pass", "Band-pass" }, 1);
     filterType.setTooltip ("Filter type");
     addAndMakeVisible (slope);
-    slope.addItemList ({ "8 dB/oct", "12 dB/oct", "18 dB/oct", "24 dB/oct" }, 1);
+    // Same four labels as the parameter: the combo and the DSP now agree.
+    slope.addItemList ({ "6 dB/oct", "12 dB/oct", "18 dB/oct", "24 dB/oct" }, 1);
     slope.setTooltip ("Filter slope");
     addAndMakeVisible (wavetableEditor);
 
