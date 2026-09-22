@@ -17,9 +17,12 @@ following entries in the Plug-Ins browser with the VST3 format selected:
 - `Serum 2 FX`
 - `Vital`
 
-The set was at `48.0 kHz`. This is browser inventory evidence only. No Serum
-or Vital instance was inserted into the user's unsaved set during this check,
-and no reference audio was rendered from them yet.
+The set was at `48.0 kHz`. The browser inventory was then exercised without
+discarding or saving the user's set: a new `3-Serum` MIDI track contains the
+`Serum` device, and a new `4-Vital` MIDI track contains the `Vital` device.
+The first `Serum` search result was `SerumFX`, which remains on the pre-existing
+Track 2 and is not used as the synth reference. No reference MIDI was played
+and no reference audio was rendered from these devices yet.
 
 ## Comparison protocol
 

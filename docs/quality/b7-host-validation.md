@@ -52,10 +52,12 @@ browser filtered to VST3, it exposed the installed `SEOUL DSP` entry and the
 selected track was renamed `1-SEOUL DSP`. The observed CPU meter was roughly
 21–25%; the block size was not available in the captured UI state.
 
-The set already contained other EON devices, and the visible device title
-remained `EON-Vari mu DSP`. Therefore this capture proves browser discovery
-and selection only. A clean empty-set insertion test is still required before
-calling Ableton VST3 loading passed. The current unsaved set was preserved.
+The initial capture was ambiguous because the set already contained other EON
+devices. A follow-up AX inspection identified the track 1 device title as
+`SEOUL DSP`; separate new MIDI tracks then loaded `Serum` and `Vital` for the
+reference benchmark. This confirms device insertion in the current set, but
+the set is no longer an empty-set test and the reference tracks have no test
+MIDI or rendered output yet. The current set was not saved or discarded.
 
 ## Remaining gates
 
