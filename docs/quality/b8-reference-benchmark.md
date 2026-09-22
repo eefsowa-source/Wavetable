@@ -32,16 +32,17 @@ A separate clean one-note clip was then created in the Session View: C4,
 Serum, Vital, and SEOUL DSP reference slots and launched one track at a time
 at 48 kHz. Live reported these peak readings:
 
-| reference | observed peak |
+| reference | final track gain | observed peak |
 | --- | ---: |
-| Serum | -9.68 dBFS |
-| Vital | -9.04 dBFS |
-| SEOUL DSP | -13.4 dBFS |
+| Serum | 0.0 dB | -9.68 dBFS |
+| Vital | 0.0 dB | -9.04 dBFS |
+| SEOUL DSP | +4.0 dB | -9.43 dBFS |
 
-The CPU meter remained around 20–24% during the checks. These readings prove
-host playback and signal flow for the clean clip. They do not establish a
-quality ranking because the default instruments and SEOUL DSP were not yet
-level matched.
+The CPU meter remained around 20–24% during the checks. The final peak range
+is 0.64 dB, with a maximum deviation of about 0.39 dB from the median. These
+readings prove host playback and signal flow for the clean clip and establish
+a practical level-matched starting point. They do not establish a quality
+ranking or replace rendered-file analysis and blind listening.
 
 ## Comparison protocol
 
