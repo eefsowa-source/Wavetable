@@ -23,7 +23,9 @@ The exact results and candidate decisions are split into:
 - [b5-analog-color.md](b5-analog-color.md) for the rejected circuit candidates;
 - [b6-output-safety-rt.md](b6-output-safety-rt.md) for DC, denormals, and RNG;
 - [b-task-matrices.md](b-task-matrices.md) for this integration run;
-- [b7-host-validation.md](b7-host-validation.md) for plugin and host evidence.
+- [b7-host-validation.md](b7-host-validation.md) for plugin and host evidence;
+- [b8-reference-benchmark.md](b8-reference-benchmark.md) for Serum/Vital
+  comparison design.
 
 Host evidence now includes a successful VST3 pluginval run at strictness 10,
 standalone AU `auval` success, and direct REAPER AU editor loading. Ableton
