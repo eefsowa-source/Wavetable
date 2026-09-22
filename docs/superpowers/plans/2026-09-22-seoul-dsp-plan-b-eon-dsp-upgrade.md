@@ -298,9 +298,12 @@ CPU, resonance 범위 미수정 사실), Release/Debug `ctest` 11/11, `CpuBench 
 이미 `Tube comp`/EON 계보에서 파라미터 세트가 검증된 재료다. 새 노브를 늘리지 않고
 기존 `saturation`/`filterDrive` 뒤단에 "color" 등급으로 매핑하는 것을 기본안으로 한다.
 
-- [ ] **Step 1:** `color` 등급(off / triode / transformer)을 내부적으로만 두고 렌더 비교.
-- [ ] **Step 2:** objective metric 개선 또는 실청취 비교 통과일 때만 유지. 아니면 폐기하고
-      그 판단을 기록한다(유지 규칙). 채택 시에만 파라미터 노출을 논의한다.
+- [x] **Step 1:** `color` 등급(off / triode / transformer)을 내부 후보 하네스에서만 두고
+      4x oversampled 렌더를 비교했다. 제품 `SynthVoice` 경로와 파라미터에는 연결하지 않았다.
+- [x] **Step 2:** 기준선 folded-third `-249.72 dBc`, Triode `-155.54 dBc`, Transformer
+      `-67.67 dBc`였다. Triode는 기준선보다 개선되지 않았고 Transformer는 alias 절대
+      게이트를 통과하지 못했다. 실청취 비교도 수행하지 않았으므로 두 후보를 폐기하고
+      [b5-analog-color.md](../quality/b5-analog-color.md)에 판정을 기록했다.
 
 ### Task 6 — 출력단/실시간 안전
 

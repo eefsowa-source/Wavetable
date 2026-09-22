@@ -264,4 +264,14 @@ if (BUILD_TESTING)
   set_target_properties(EonDspContractTests PROPERTIES
     MACOSX_DEPLOYMENT_TARGET "12.0")
   add_test(NAME EonDspContract COMMAND EonDspContractTests)
+
+  # Conditional Plan B Task 5 candidate render. This is intentionally a
+  # standalone evaluation: rejected analog colour must not alter the shipping
+  # SynthVoice path or add an unapproved parameter.
+  add_executable(AnalogColorCandidateTests Tests/AudioQuality/AnalogColorCandidateTests.cpp)
+  target_link_libraries(AnalogColorCandidateTests PRIVATE eon::dsp)
+  target_compile_options(AnalogColorCandidateTests PRIVATE -Wall -Wextra)
+  set_target_properties(AnalogColorCandidateTests PROPERTIES
+    MACOSX_DEPLOYMENT_TARGET "12.0")
+  add_test(NAME AnalogColorCandidate COMMAND AnalogColorCandidateTests)
 endif()
