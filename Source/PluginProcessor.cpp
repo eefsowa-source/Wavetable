@@ -1,5 +1,6 @@
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
+#include <Dsp/RtGuard.h>
 #include <array>
 #include <cmath>
 #include <cstdint>
@@ -238,13 +239,14 @@ void HybridWavetableAudioProcessor::reset()
     lowBandScratch.clear();
     reverb.reset();
     outputSafety.reset();
+    arpRandom = eon::Rng (0x53454f55u);
     effectSmoothersNeedInitialisation = true;
 }
 bool HybridWavetableAudioProcessor::isBusesLayoutSupported (const BusesLayout& l) const
 { return l.getMainOutputChannelSet() == juce::AudioChannelSet::mono() || l.getMainOutputChannelSet() == juce::AudioChannelSet::stereo(); }
 void HybridWavetableAudioProcessor::processBlock (juce::AudioBuffer<float>& b, juce::MidiBuffer& m)
 {
-    juce::ScopedNoDenormals noDenormals;
+    eon::ScopedDenormalsOff noDenormals;
     if (effectSmoothersNeedInitialisation)
     {
         const auto initialiseNow = [this] (auto& smoother, const char* id)
@@ -487,8 +489,7 @@ void HybridWavetableAudioProcessor::processArpeggiator (juce::MidiBuffer& midi, 
             }
             else if (pattern == 3)
             {
-                arpRandomState = arpRandomState * 1664525u + 1013904223u;
-                index = (int) (arpRandomState % (std::uint32_t) noteCount);
+                index = juce::jmin (noteCount - 1, (int) (arpRandom.next() * noteCount));
             }
             arpActiveNote = notes[(size_t) index];
             arpeggiatedMidi.addEvent (juce::MidiMessage::noteOn (1, arpActiveNote, heldNoteVelocity[(size_t) arpActiveNote]), offset);

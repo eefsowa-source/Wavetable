@@ -1,5 +1,6 @@
 #pragma once
 #include <JuceHeader.h>
+#include <Dsp/Rng.h>
 #include "DSP/SynthVoice.h"
 #include "DSP/OutputSafety.h"
 #include "EditorTypes.h"
@@ -81,7 +82,7 @@ private:
 
     std::array<float, 128> heldNoteVelocity {};
     int arpActiveNote = -1, arpStep = 0, arpSamplesUntilStep = 0, arpSamplesUntilGateOff = -1;
-    std::uint32_t arpRandomState = 0x53454f55u;
+    eon::Rng arpRandom { 0x53454f55u };
     juce::MidiBuffer arpeggiatedMidi;
     std::array<std::atomic<int>, 128> midiCCAssignments;
     std::atomic<int> midiLearnTarget { -1 };

@@ -1,4 +1,5 @@
 #include "SynthVoice.h"
+#include <Dsp/RtGuard.h>
 
 namespace SeoulDSPQuality
 {
@@ -89,6 +90,7 @@ void SynthVoice::stopNote (float, bool allowTailOff)
 
 void SynthVoice::renderNextBlock (juce::AudioBuffer<float>& output, int start, int count)
 {
+    eon::ScopedDenormalsOff noDenormals;
     if (! isVoiceActive()) return;
     auto* out = output.getWritePointer (0, start);
     auto* outRight = output.getNumChannels() > 1 ? output.getWritePointer (1, start) : nullptr;

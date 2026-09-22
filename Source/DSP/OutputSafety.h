@@ -1,5 +1,6 @@
 #pragma once
 
+#include <Dsp/Stages.h>
 #include <JuceHeader.h>
 
 #include <array>
@@ -13,7 +14,5 @@ public:
 
 private:
     static constexpr int maximumChannels = 2;
-    std::array<float, maximumChannels> previousInput {};
-    std::array<float, maximumChannels> previousOutput {};
-    float dcCoefficient = 0.0f;
+    std::array<eon::DCBlocker, maximumChannels> dcBlockers {};
 };

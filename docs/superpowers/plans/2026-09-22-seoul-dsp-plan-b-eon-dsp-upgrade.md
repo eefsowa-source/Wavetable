@@ -307,15 +307,19 @@ CPU, resonance 범위 미수정 사실), Release/Debug `ctest` 11/11, `CpuBench 
 
 ### Task 6 — 출력단/실시간 안전
 
-- [ ] **Step 1:** `OutputSafety`의 float 10 Hz DC blocker를 `eon::DCBlocker`(double,
+- [x] **Step 1:** `OutputSafety`의 float 10 Hz DC blocker를 `eon::DCBlocker`(double,
       `prepare(sr, 18 Hz)`)로 교체하고 DC 게이트(-80 dBFS)와 1 kHz gain error(<0.01 dB)
-      회귀를 유지한다.
-- [ ] **Step 2:** voice/render 경계에 `eon::ScopedDenormalsOff`(`ftz`)를 적용해
-      denormal CPU 폭주를 막고, RT 경로가 allocation-free임을 기존 게이트로 재확인한다.
-- [ ] **Step 3:** drift/random phase 난수원을 `eon::Rng`로 통일한다. Golden 결정성을 위해
-      기존 `RealtimeRandom` 시드 -> `eon::Rng` 시드 매핑을 문서화하고, 결정적 렌더 회귀를 유지한다.
-- [ ] **Step 4:** `tracktion_...` 없이 순수 계산인 `eon::Measure`(thdPercent, foldedMagAt)를
-      테스트 전용 측정에 활용해 Metrics와 중복 계산을 줄인다(선택).
+      회귀를 유지했다.
+- [x] **Step 2:** voice/render 경계에 `eon::ScopedDenormalsOff`(`ftz`)를 적용하고,
+      ProcessorQuality/OfflineRenderer/ProcessorSmoke의 RT 경로 회귀를 통과했다.
+- [x] **Step 3:** random phase와 arpeggiator 난수원을 `eon::Rng`로 통일했다. 기존
+      32-bit `RealtimeRandom` 입력의 64-bit eon 시드 매핑과 reset seed를 문서화하고,
+      결정적 렌더 회귀를 유지했다.
+- [x] **Step 4 (선택):** 기존 `eon::Measure` 계약과 Task 4/5 측정 하네스를 유지했다.
+      새 중복 Metrics 계산을 만들지 않아 별도 변경은 필요하지 않았다.
+
+**증거:** [b6-output-safety-rt.md](../quality/b6-output-safety-rt.md), Release/Debug
+CTest 전체 결과.
 
 ### Task 7 — 통합 증거 리포트와 종료 조건
 
