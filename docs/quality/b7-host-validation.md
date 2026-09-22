@@ -56,8 +56,11 @@ The initial capture was ambiguous because the set already contained other EON
 devices. A follow-up AX inspection identified the track 1 device title as
 `SEOUL DSP`; separate new MIDI tracks then loaded `Serum` and `Vital` for the
 reference benchmark. This confirms device insertion in the current set, but
-the set is no longer an empty-set test and the reference tracks have no test
-MIDI or rendered output yet. The current set was not saved or discarded.
+the set is no longer an empty-set test. A clean C4 MIDI clip was created and
+launched one track at a time through the new Serum, Vital, and SEOUL DSP
+tracks; peak readings and the level-matching boundary are recorded in
+[b8-reference-benchmark.md](b8-reference-benchmark.md). The current set was
+not saved or discarded.
 
 ## Remaining gates
 

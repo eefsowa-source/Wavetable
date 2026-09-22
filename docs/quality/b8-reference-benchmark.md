@@ -27,6 +27,22 @@ clip was copied to the Serum and Vital tracks for staging, but it carries the
 source track's automation lanes; it is not yet a clean MIDI-only comparison
 fixture.
 
+A separate clean one-note clip was then created in the Session View: C4,
+1/16-note duration, velocity 100, with no automation. It was copied to the
+Serum, Vital, and SEOUL DSP reference slots and launched one track at a time
+at 48 kHz. Live reported these peak readings:
+
+| reference | observed peak |
+| --- | ---: |
+| Serum | -9.68 dBFS |
+| Vital | -9.04 dBFS |
+| SEOUL DSP | -13.4 dBFS |
+
+The CPU meter remained around 20–24% during the checks. These readings prove
+host playback and signal flow for the clean clip. They do not establish a
+quality ranking because the default instruments and SEOUL DSP were not yet
+level matched.
+
 ## Comparison protocol
 
 The first comparison pass should use a clean Ableton set with one reference
