@@ -1,6 +1,8 @@
 #include "../../Source/PluginProcessor.h"
 #include "../../Source/DSP/RealtimeRandom.h"
 #include "../../Source/DSP/SaturationStage.h"
+#include "../../Source/DSP/SlopeFilter.h"
+#include "Dsp/Measure.h"
 #include "OfflineRenderer.h"
 #include "TestHarness.h"
 
@@ -113,6 +115,54 @@ double tailRms (const juce::AudioBuffer<float>& buffer)
             ++count;
         }
     return count > 0 ? std::sqrt (sum / (double) count) : 0.0;
+}
+
+// One oscillator tuned so the tone lands on 512.03 Hz, which is a whole number
+// of cycles in the 12000-sample window the drive test analyses (128 cycles in
+// 0.25 s), so the rectangular-window DFT in eon::measure::thdPercent does not
+// read window leakage as harmonics.
+juce::AudioBuffer<float> renderDriveTone (float driveDecibels)
+{
+    audioquality::AudioQualityFixture fixture;
+    fixture.id = "filter-drive-tone";
+    fixture.durationSeconds = 0.5;
+    fixture.tailSeconds = 0.0;
+    fixture.randomSeed = 400u;
+    fixture.midi = { { juce::MidiMessage::noteOn (1, 60, 0.9f), 0 } };
+    return audioquality::OfflineRenderer::render (fixture, [driveDecibels] (auto& processor)
+    {
+        const auto set = [&] (const char* id, float value)
+        {
+            if (auto* parameter = processor.parameters.getParameter (id))
+                parameter->setValueNotifyingHost (parameter->convertTo0to1 (value));
+        };
+        set ("osc1Level", 1.0f);
+        set ("osc2Level", 0.0f);
+        set ("osc3Level", 0.0f);
+        set ("osc1Pos", 0.0f);
+        set ("osc1Unison", 1.0f);
+        set ("osc1Tune", 11.62407f);
+        set ("unisonKeyTrack", 0.0f);
+        set ("filterType", 0.0f);
+        set ("filterSlope", 1.0f);
+        // Keep the harmonics the clipper makes inside the band, so the THD
+        // number measures the drive rather than the filter's own rolloff.
+        set ("cutoff", 20000.0f);
+        set ("resonance", 0.1f);
+        set ("filterDrive", driveDecibels);
+        set ("filterEnvAmount", 0.0f);
+        set ("saturation", 0.0f);
+        set ("lfo1Depth", 0.0f);
+        set ("lfo2Depth", 0.0f);
+        set ("driftDepth", 0.0f);
+        set ("ampAttack", 0.001f);
+        set ("ampDecay", 0.001f);
+        set ("ampSustain", 1.0f);
+        set ("delayMix", 0.0f);
+        set ("reverbMix", 0.0f);
+        set ("masterWidth", 1.0f);
+        set ("output", 0.0f);
+    });
 }
 
 juce::AudioBuffer<float> renderWithSaturation (float saturation)
@@ -317,8 +367,9 @@ int main()
         {
             const auto measured = -20.0 * std::log10 (tailRms (highTones[(size_t) i])
                                                        / tailRms (lowTones[(size_t) i]));
-            std::printf ("  slope %d: measured %.2f dB/oct (label %.0f)\n",
-                         expectations[i].index, measured, expectations[i].dBPerOctave);
+            std::printf ("  slope %d: measured %.2f dB/oct (label %.0f) [low %.6g high %.6g]\n",
+                         expectations[i].index, measured, expectations[i].dBPerOctave,
+                         tailRms (lowTones[(size_t) i]), tailRms (highTones[(size_t) i]));
             test.expect (std::abs (measured - expectations[i].dBPerOctave) < 1.5,
                          juce::String ("filter slope ") + juce::String (expectations[i].index)
                             + " rolls off at " + juce::String (expectations[i].dBPerOctave, 0)
@@ -348,6 +399,70 @@ int main()
         test.expect (allFinite, "every slope and filter type renders finite output");
         test.expect (allBounded,
                      "every slope and filter type stays below +18 dBFS at maximum resonance");
+    }
+
+    // 0 dB drive must be exactly the linear section it wraps, even on an input
+    // big enough that a "gentle" waveshaper would show. That is the property the
+    // old linear pre-gain had, and SlopeFilter has to keep it.
+    {
+        constexpr double sr = 48000.0, fc = 3000.0, q = 0.9;
+        SlopeFilter filter;
+        eon::SvfTPT reference;
+        filter.reset();
+        reference.reset();
+        double worst = 0.0;
+        for (int i = 0; i < 4096; ++i)
+        {
+            const float x = (float) (1.5 * std::sin (2.0 * juce::MathConstants<double>::pi
+                                                      * 261.0 * (double) i / sr));
+            filter.setParams (1, 0, fc, q, 0.0, sr);
+            reference.setParams (fc, q, sr);
+            worst = juce::jmax (worst, std::abs ((double) filter.process (x)
+                                                 - reference.process ((double) x).lp));
+        }
+        std::printf ("  0 dB drive vs eon::SvfTPT worst difference = %.3e\n", worst);
+        // process() returns float, so the comparison against the double
+        // reference can only hold to float precision; 1e-6 is ~2 ulp at these
+        // amplitudes and well below anything audible.
+        test.expect (worst < 1.0e-6, "0 dB filter drive is the linear TPT section exactly");
+    }
+
+    // Drive has to be a nonlinearity, not a level control. The clipper is off at
+    // 0 dB, so the clean render is the linear filter and the harmonic content has
+    // to climb steeply as the knob comes up, while the output stays bounded.
+    {
+        constexpr double kProbeHz = 512.0;
+        constexpr int kAnalysisSamples = 12000;   // 0.25 s: 128 exact cycles
+        constexpr double kSampleRateLocal = 48000.0;
+        const auto thdOf = [&] (const juce::AudioBuffer<float>& buffer)
+        {
+            const int first = juce::jmax (0, buffer.getNumSamples() - kAnalysisSamples);
+            return eon::measure::thdPercent (buffer.getReadPointer (0, first),
+                                             (size_t) kAnalysisSamples, kProbeHz,
+                                             kSampleRateLocal);
+        };
+        const auto clean = renderDriveTone (0.0f);
+        const auto driven = renderDriveTone (24.0f);
+        const double cleanThd = thdOf (clean);
+        const double drivenThd = thdOf (driven);
+        std::printf ("  filter drive THD: 0 dB -> %.4f %%, +24 dB -> %.4f %%\n",
+                     cleanThd, drivenThd);
+        test.expect (drivenThd > 2.0,
+                     "filter drive at +24 dB adds harmonic distortion (crest factor falls)");
+        test.expect (drivenThd > 10.0 * jmax (cleanThd, 1.0e-6),
+                     "filter drive raises harmonics well above the 0 dB setting");
+        bool drivenFinite = true;
+        float drivenPeak = 0.0f;
+        for (int channel = 0; channel < driven.getNumChannels(); ++channel)
+            for (int sample = 0; sample < driven.getNumSamples(); ++sample)
+            {
+                const auto value = driven.getSample (channel, sample);
+                drivenFinite &= std::isfinite (value);
+                drivenPeak = juce::jmax (drivenPeak, std::abs (value));
+            }
+        std::printf ("  +24 dB drive peak = %.3f (finite %d)\n", drivenPeak, (int) drivenFinite);
+        test.expect (drivenFinite, "the driven filter output stays finite");
+        test.expect (drivenPeak < 2.0f, "the driven filter output stays bounded below +6 dBFS");
     }
 
     return test.result();

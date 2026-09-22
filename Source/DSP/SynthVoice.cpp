@@ -182,7 +182,9 @@ void SynthVoice::renderNextBlock (juce::AudioBuffer<float>& output, int start, i
         const float l2 = smoothedOsc2Level.getNextValue();
         const float l3 = smoothedOsc3Level.getNextValue();
         const float saturation = smoothedSaturation.getNextValue();
-        const float inGain = juce::Decibels::decibelsToGain (smoothedFilterDrive.getNextValue());
+        // Filter drive is no longer a linear pre-gain here: SlopeFilter owns it
+        // and clips its first section's drive node. See SlopeFilter.h.
+        const float filterDriveDb = smoothedFilterDrive.getNextValue();
         const float wavetable1 = smoothedWavetable1.getNextValue();
         const float wavetable2 = smoothedWavetable2.getNextValue();
         const float wavetable3 = smoothedWavetable3.getNextValue();
@@ -215,8 +217,8 @@ void SynthVoice::renderNextBlock (juce::AudioBuffer<float>& output, int start, i
         const float modulatedCutoff = SeoulDSPQuality::filterEnvelopeCutoff (cutoffHz, filterEnvAmount,
                                                                               fenv, (float) sampleRate,
                                                                               lfoCutoffOctaves);
-        voiceFilterLeft.setParams (slope, type, modulatedCutoff, resonance, sampleRate);
-        voiceFilterRight.setParams (slope, type, modulatedCutoff, resonance, sampleRate);
+        voiceFilterLeft.setParams (slope, type, modulatedCutoff, resonance, filterDriveDb, sampleRate);
+        voiceFilterRight.setParams (slope, type, modulatedCutoff, resonance, filterDriveDb, sampleRate);
         float osc1Left = 0.0f, osc1Right = 0.0f;
         float osc2Left = 0.0f, osc2Right = 0.0f;
         float osc3Left = 0.0f, osc3Right = 0.0f;
@@ -230,8 +232,8 @@ void SynthVoice::renderNextBlock (juce::AudioBuffer<float>& output, int start, i
         osc3Bank.processStereo (*table, osc3Count, noteHz * osc3Ratio * pitchRatio,
                                 wavetable3 + positionOffset, osc3DetuneScaled,
                                 osc3SpreadValue, osc3Left, osc3Right);
-        float left = (osc1Left * l1 + osc2Left * l2 + osc3Left * l3) / 3.0f * inGain;
-        float right = (osc1Right * l1 + osc2Right * l2 + osc3Right * l3) / 3.0f * inGain;
+        float left = (osc1Left * l1 + osc2Left * l2 + osc3Left * l3) / 3.0f;
+        float right = (osc1Right * l1 + osc2Right * l2 + osc3Right * l3) / 3.0f;
         left = voiceFilterLeft.process (left);
         if (outRight != nullptr)
             right = voiceFilterRight.process (right);
