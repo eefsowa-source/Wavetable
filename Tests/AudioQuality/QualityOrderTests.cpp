@@ -36,10 +36,11 @@
 //   4. the saturation stage leaves no folded-harmonic energy above the ceiling
 //      at either the default or the maximum drive.
 //
-// What it does NOT yet guarantee, and must not pretend to: the tier ordering
-// Eco < Normal < High. The product has no saturation quality tier yet, so every
-// tier label would render identically and such a gate would be meaningless.
-// Task 3 adds the tier and the ordering assertion here, against this instrument.
+// The quality-tier gate deliberately does not claim Eco < Normal < High on this
+// proxy. Task 3b measured all tiers at the render floor at 10 kHz, while an
+// exploratory 13 kHz probe differed by less than 2 dB without a monotonic trend.
+// It instead proves that every tier clears the absolute ceiling and that the
+// selector changes the rendered signal.
 
 // History worth keeping: this file originally proved its own sensitivity by
 // driving the real saturation stage harder and requiring a 15 dB increase in
@@ -126,7 +127,7 @@ double foldedThirdHarmonicHz()
 }
 
 void configureAliasTone (HybridWavetableAudioProcessor& processor, float saturation,
-                         float tuneSemitones)
+                         float tuneSemitones, int quality = 1)
 {
     const auto set = [&processor] (const char* id, float value)
     {
@@ -171,9 +172,11 @@ void configureAliasTone (HybridWavetableAudioProcessor& processor, float saturat
     set ("masterWidth", 1.0f);
     set ("output", 0.0f);
     set ("saturation", saturation);
+    set ("saturationQuality", (float) quality);
 }
 
-juce::AudioBuffer<float> renderAliasTone (float saturation, int blockSize, std::uint32_t seed)
+juce::AudioBuffer<float> renderAliasTone (float saturation, int blockSize, std::uint32_t seed,
+                                          int quality = 1)
 {
     audioquality::AudioQualityFixture fixture;
     fixture.id = "alias-probe-tone";
@@ -186,9 +189,9 @@ juce::AudioBuffer<float> renderAliasTone (float saturation, int blockSize, std::
     fixture.randomSeed = seed;
     fixture.midi = { { juce::MidiMessage::noteOn (1, kMidiNote, 0.8f), 0 } };
 
-    return audioquality::OfflineRenderer::render (fixture, [saturation] (auto& processor)
+    return audioquality::OfflineRenderer::render (fixture, [saturation, quality] (auto& processor)
     {
-        configureAliasTone (processor, saturation, probeTuneSemitones());
+        configureAliasTone (processor, saturation, probeTuneSemitones(), quality);
     });
 }
 
@@ -455,6 +458,48 @@ void runInstrumentTests (audioquality::TestHarness& test)
     test.expect (cleanMedian <= kMaximumFoldedAliasDbc,
                  "folded-harmonic alias at the default drive stays below "
                      + juce::String (kMaximumFoldedAliasDbc, 0) + " dBc");
+
+    // Saturation quality tiers (Plan B Task 3b). Three tiers exist: Eco (legacy
+    // curve at 2x), Normal (ADAA at 2x), High (ADAA at 4x). The honest finding is
+    // that they do NOT order on the folded-alias proxy: the reference probe
+    // scores every tier on the render floor, and a 13 kHz probe puts them within
+    // 2 dB without a useful trend. The base 2x half-band FIR already removes the
+    // folded harmonics even for the legacy curve, so antiderivative anti-aliasing
+    // and a second oversampling stage add no measurable folded-alias headroom
+    // here. What the tiers do change is the curve (Eco is the pre-Task-3 tone)
+    // and the oversampling depth, which are an audible and CPU choice. The gate
+    // therefore checks that the knob is a real control and that every tier keeps
+    // the reference probe at the ceiling.
+    {
+        auto medianReferenceProxyForT = [] (int quality)
+        {
+            std::array<double, kBlockSizes.size()> proxies {};
+            for (size_t index = 0; index < kBlockSizes.size(); ++index)
+                proxies[index] = foldedHarmonicAliasDbc (renderAliasTone (kHotSaturation,
+                                                                            kBlockSizes[index], kSeed, quality));
+            return medianOf (proxies);
+        };
+        const double ecoMedian = medianReferenceProxyForT (0);
+        const double normalMedian = medianReferenceProxyForT (1);
+        const double highMedian = medianReferenceProxyForT (2);
+        std::printf ("  tiers @10k 3rd fold: Eco %.2f dBc | Normal %.2f dBc | High %.2f dBc (all must be <= %.0f)\n",
+                     ecoMedian, normalMedian, highMedian, kMaximumFoldedAliasDbc);
+        test.expect (ecoMedian <= kMaximumFoldedAliasDbc
+                         && normalMedian <= kMaximumFoldedAliasDbc
+                         && highMedian <= kMaximumFoldedAliasDbc,
+                     "every saturation quality tier keeps the reference probe at or below the ceiling");
+
+        // The knob must change the sound. Eco uses a different curve and Normal
+        // and High a different oversampling depth.
+        const auto referenceRender = [] (int quality)
+        {
+            return renderAliasTone (kHotSaturation, kBlockSizes[1], kSeed, quality);
+        };
+        test.expect (maximumDifference (referenceRender (0), referenceRender (1)) > 1.0e-5f,
+                     "changing quality to Eco alters the rendered signal");
+        test.expect (maximumDifference (referenceRender (1), referenceRender (2)) > 1.0e-5f,
+                     "changing quality to High alters the rendered signal");
+    }
 }
 } // namespace
 

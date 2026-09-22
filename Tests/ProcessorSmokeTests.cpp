@@ -334,8 +334,8 @@ int main()
     juce::MemoryBlock state;
     processor.getStateInformation (state);
     std::unique_ptr<juce::XmlElement> savedXml (HybridWavetableAudioProcessor::getXmlFromBinary (state.getData(), (int) state.getSize()));
-    ok &= check (savedXml != nullptr && savedXml->getIntAttribute ("stateSchemaVersion", 0) == 2,
-                 "state carries schema version 2");
+    ok &= check (savedXml != nullptr && savedXml->getIntAttribute ("stateSchemaVersion", 0) == 3,
+                 "state carries schema version 3");
     processor.wavetable.frames[0][0] = -0.42f;
     processor.publishWavetable();
     processor.parameters.getParameter ("cutoff")->setValueNotifyingHost (0.9f);
@@ -355,6 +355,7 @@ int main()
         removeParameterFromXml (*savedXml, "osc2Detune");
         removeParameterFromXml (*savedXml, "osc3Detune");
         removeParameterFromXml (*savedXml, "unisonKeyTrack");
+        removeParameterFromXml (*savedXml, "saturationQuality");
         juce::MemoryBlock legacyState;
         HybridWavetableAudioProcessor::copyXmlToBinary (*savedXml, legacyState);
         processor.setStateInformation (legacyState.getData(), (int) legacyState.getSize());
@@ -362,9 +363,11 @@ int main()
                      "version-1 state migration fills osc1 detune");
         ok &= check (std::abs (processor.parameters.getRawParameterValue ("unisonKeyTrack")->load()) < 0.001f,
                      "version-1 state migration fills key-track");
+        ok &= check (std::abs (processor.parameters.getRawParameterValue ("saturationQuality")->load() - 1.0f) < 0.001f,
+                     "version-1 state migration selects Normal saturation quality");
     }
 
-    // Load the checked-in v1 fixture itself, upgrade it to schema 2, and
+    // Load the checked-in v1 fixture itself, upgrade it to schema 3, and
     // verify that a same-seed render survives the state round trip exactly.
     const auto stateFixture = locateStateFixture();
     juce::MemoryBlock fixtureState;
@@ -392,13 +395,15 @@ int main()
                      "fixture preserves second legacy oscillator position");
         ok &= check (std::abs (legacyProcessor->parameters.getRawParameterValue ("osc3Pos")->load() - 0.73f) < 0.001f,
                      "fixture preserves third legacy oscillator position");
+        ok &= check (std::abs (legacyProcessor->parameters.getRawParameterValue ("saturationQuality")->load() - 1.0f) < 0.001f,
+                     "legacy fixture migrates to Normal saturation quality");
 
         juce::MemoryBlock upgradedState;
         legacyProcessor->getStateInformation (upgradedState);
         std::unique_ptr<juce::XmlElement> upgradedXml (HybridWavetableAudioProcessor::getXmlFromBinary (upgradedState.getData(),
                                                                                                            (int) upgradedState.getSize()));
-        ok &= check (upgradedXml != nullptr && upgradedXml->getIntAttribute ("stateSchemaVersion", 0) == 2,
-                     "legacy fixture saves as schema version 2");
+        ok &= check (upgradedXml != nullptr && upgradedXml->getIntAttribute ("stateSchemaVersion", 0) == 3,
+                     "legacy fixture saves as schema version 3");
 
         auto restoredProcessor = std::make_unique<HybridWavetableAudioProcessor> (0x51a7e001u);
         restoredProcessor->prepareToPlay (48000.0, 256);

@@ -258,11 +258,15 @@ void SynthVoice::renderNextBlock (juce::AudioBuffer<float>& output, int start, i
 
     const float saturation = smoothedSaturation.getCurrentValue();
     const float satMakeup = 1.0f - saturation * 0.18f;
+    const auto qualityIndex = (int) params.getRawParameterValue ("saturationQuality")->load();
+    saturationStage.setQuality (static_cast<SaturationStage::Quality> (juce::jlimit (0, 2, qualityIndex)));
     // Saturation only matters once drive is actually applied, but a block inside
     // a ramp keeps the stage running so smoothed attacks receive the same
     // antialiasing as steady state does.
     const bool saturationBypassed = saturation <= 0.005f && ! smoothedSaturation.isSmoothing();
-    if (! saturationBypassed)
+    if (saturationBypassed)
+        saturationStage.processBypass (preSatLeft, outRight != nullptr ? preSatRight : nullptr, count);
+    else
         saturationStage.process (preSatLeft, outRight != nullptr ? preSatRight : nullptr, count);
     for (int i = 0; i < count; ++i)
     {

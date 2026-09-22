@@ -1,5 +1,6 @@
 #include "../../Source/PluginProcessor.h"
 #include "../../Source/DSP/RealtimeRandom.h"
+#include "../../Source/DSP/SaturationStage.h"
 #include "OfflineRenderer.h"
 #include "TestHarness.h"
 
@@ -94,6 +95,49 @@ int main()
         for (const auto* id : { "osc1Detune", "osc2Detune", "osc3Detune", "unisonKeyTrack" })
             test.expect (processor.parameters.getParameter (id) != nullptr,
                          "unison detune/key-track parameter is registered");
+        test.expect (processor.parameters.getParameter ("saturationQuality") != nullptr
+                         && processor.parameters.getRawParameterValue ("saturationQuality")->load() == 1.0f,
+                     "saturation quality is registered and defaults to Normal");
+        processor.prepareToPlay (48000.0, 64);
+        test.expect (processor.getLatencySamples() == SaturationStage::reportedLatencySamples,
+                     "processor reports the fixed saturation latency");
+    }
+
+    // Every tier and the zero-drive bypass must line up at the same sample.
+    // This catches a dry path that skips DSP while the processor still reports
+    // the oversampler latency to its host.
+    {
+        const auto impulsePeak = [] (SaturationStage::Quality quality, bool bypass)
+        {
+            SaturationStage stage;
+            stage.prepare (64);
+            stage.setQuality (quality);
+            std::array<float, 128> signal {};
+            signal[0] = 0.5f;
+            for (int offset = 0; offset < (int) signal.size(); offset += 64)
+            {
+                if (bypass)
+                    stage.processBypass (signal.data() + offset, nullptr, 64);
+                else
+                    stage.process (signal.data() + offset, nullptr, 64);
+            }
+            return (int) std::distance (signal.begin(),
+                                        std::max_element (signal.begin(), signal.end(),
+                                                          [] (float a, float b)
+                                                          { return std::abs (a) < std::abs (b); }));
+        };
+        const auto ecoPeak = impulsePeak (SaturationStage::Quality::eco, false);
+        const auto normalPeak = impulsePeak (SaturationStage::Quality::normal, false);
+        const auto highPeak = impulsePeak (SaturationStage::Quality::high, false);
+        std::printf ("saturation impulse peaks: Eco %d, Normal %d, High %d, Bypass %d\n",
+                     ecoPeak, normalPeak, highPeak,
+                     impulsePeak (SaturationStage::Quality::normal, true));
+        for (const auto peak : { ecoPeak, normalPeak, highPeak })
+            test.expect (peak == SaturationStage::reportedLatencySamples,
+                         "saturation quality tier matches the fixed reported latency");
+        test.expect (impulsePeak (SaturationStage::Quality::normal, true)
+                         == SaturationStage::reportedLatencySamples,
+                     "zero-drive saturation bypass matches the fixed reported latency");
     }
 
     // Parameter resolution. JUCE's AudioParameterFloat(id, name, min, max,

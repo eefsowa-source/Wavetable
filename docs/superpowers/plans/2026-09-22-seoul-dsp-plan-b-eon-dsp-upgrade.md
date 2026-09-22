@@ -4,7 +4,7 @@
 > 체크박스(`- [ ]`)는 실행 시점에 갱신한다.
 
 **작성일:** 2026-09-22  
-**상태:** IN PROGRESS (Task 1, 2, 2b, 3 완료 / 3b, 4, 5, 6, 7 남음, 2026-09-22)  
+**상태:** IN PROGRESS (Task 1, 2, 2b, 3, 3b 완료 / 4, 5, 6, 7 남음, 2026-09-22)
 **대상 DSP 코어:** `eon_dsp` rev `c8e71f3` (canonical: `~/Desktop/EON LLM wiki/EON Audio Plugin/eon_dsp`)  
 **대상 제품:** SEOUL DSP (JUCE 8.0.14 wavetable synth, `HybridWavetable`)
 
@@ -207,7 +207,8 @@ half-band FIR polyphase(71/47/35 taps, stopband -113/-102/-90 dB)와 ADAA를 조
 - [x] **Step 4:** 지연 0 → **35 samples**(임펄스 왕복 실측, 정수). `CpuBench`:
       solo 62.9 → **84.8 ms**, dense16 991.3 → **1328.5 ms**(Phase 2 대비 +34%,
       최초 baseline 1293.0 ms 대비 +2.7%). 기록: cpu-optimization.md.
-- [ ] **Step 5 (이동):** 등급 파라미터 추가·state 마이그레이션·UI 노출은 Task 3b로.
+- [x] **Step 5 (Task 3b 완료):** 등급 파라미터와 state 마이그레이션을 추가했다. 커스텀 UI는
+      기본안에 따라 비노출하고 호스트 파라미터로 제공한다.
 
 **증거:** [b2-alias-baseline.md](../quality/b2-alias-baseline.md) 7절 (before/after 표,
 셰이퍼 고조파 프로파일, ADAA 단독 대조 실험 -62.69 dBc, 계측기 변경 이유, CPU/지연),
@@ -224,9 +225,28 @@ Release/Debug `ctest` 요약.
 3. **CPU는 Phase 1/2 절감분을 되돌려 썼다.** dense16이 최초 baseline 수준으로 돌아왔다.
    음질 대가로 지불한 비용이며, 등급제가 사용자 선택지를 제공할 지점이다.
 
-**Task 3b로 넘기는 등급 래더 (측정으로 확정):** Eco = 2x half-band + 기존 tanh(교체 전
-동작, -108.9 dBc), Normal = 2x + ADAA(현재, -156.5 dBc), High = 4x + ADAA(지연 46 samples,
-소수부 처리 필요). Eco는 "빠르지만 예전만큼 깨끗함"이라는 명시적 선택지다.
+**Task 3b로 넘긴 등급 래더:** Eco = 2x half-band + 기존 tanh 곡선, Normal = 2x + ADAA,
+High = 4x + ADAA. 실제 Task 3b 측정 결과는 아래와 같이 갱신했다.
+
+### Task 3b — 새터레이션 품질 등급 (완료)
+
+`saturationQuality` 선택 파라미터(Eco/Normal/High)를 추가했다. 기본값은 Normal이며,
+schema 3 마이그레이션이 구형 state의 누락 값을 Normal로 채운다. 커스텀 에디터에는 노출하지
+않고 호스트 파라미터로만 제공해 기존 UI 기본안을 유지한다.
+
+- [x] Eco = 2x half-band + 기존 tanh 곡선, Normal = 2x + ADAA1, High = 4x + ADAA1.
+- [x] 10 kHz 3차 접힘: Eco -153.12, Normal -156.55, High -156.74 dBc. 모두 절대 상한
+      -150 dBc를 통과한다.
+- [x] 13 kHz 탐색 측정은 -64.95/-66.82/-65.73 dBc로 단조 순서가 없었다. 따라서 근거 없는
+      품질 순서 assertion 대신 절대 상한과 실제 렌더 차이를 게이트로 고정했다.
+- [x] 모든 등급과 drive 0 바이패스가 실제 임펄스 피크 47 samples에 정렬된다. 4x의 이론값
+      46.5를 정수 호스트 지연 47로 보고하고 2x에는 12 samples를 보정한다.
+- [x] 동일 Release 실행 CPU(solo/dense16): Eco 81.5/1268.9 ms, Normal 85.8/1310.5 ms,
+      High 103.1/1629.1 ms. High는 dense 기준 Normal보다 약 24% 무겁다.
+- [x] Release/Debug 전체 CTest 11/11과 state migration을 검증한다.
+
+**증거:** [b2-alias-baseline.md](../quality/b2-alias-baseline.md) 7.5절,
+[cpu-optimization.md](../quality/cpu-optimization.md).
 
 ### Task 4 — 필터 드라이브 비선형화 + slope 정직화
 
@@ -315,8 +335,7 @@ Release/Debug `ctest` 요약.
 
 ## 7. 결정이 필요한 지점 (기본안 포함)
 
-1. `saturationQuality` 등급을 **UI에 노출**할지, 내부 고정(Normal)으로 둘지.
-   기본안: 내부 고정 + 고급 설정에서만 노출.
+1. `saturationQuality`: **결정 완료.** 기본 Normal, 커스텀 UI 비노출, 호스트 파라미터 제공.
 2. slope 라벨을 `6/12/18/24 dB/oct`로 정정할지(실제 DSP와 일치), `8 dB` 근사 표기를
    유지할지. 기본안: `6/12/18/24`로 정정.
 3. Task 5 아날로그 컬러 단계를 이번 Plan B 범위에 포함할지, 별도 Plan으로 미룰지.

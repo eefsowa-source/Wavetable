@@ -67,7 +67,7 @@ Task 2b 이전 기록(clean `-133.48`, floor `-151.42`)과의 차이는 최대 0
 이는 파라미터 값의 마지막 ULP 차이가 float32 FFT의 수치 바닥을 움직인 결과다.
 판정에 쓰는 수치(민감도 24.5 dB, 순서 비교)는 그대로다.
 
-## 3. 이 계측기가 보증하는 것 / 보증하지 않는 것
+## 3. Task 2 시점에 이 계측기가 보증한 것 / 보증하지 않은 것
 
 보증:
 
@@ -75,17 +75,20 @@ Task 2b 이전 기록(clean `-133.48`, floor `-151.42`)과의 차이는 최대 0
 - float 파라미터가 0.01 단위로 스냅되지 않는다(아래 Task 2b). tune 0.005 semitone
   변화가 0.5 cent로 그대로 오디오에 도달한다.
 - 같은 시드/설정에서 렌더가 bit-identical로 재현된다.
-- 비선형 drive가 커지면 folded 에너지가 계측 가능하게 증가한다(≥15 dB 게이트).
+- 당시 비선형 drive가 커지면 folded 에너지가 계측 가능하게 증가했다(≥15 dB 게이트).
+  Task 3 이후 두 drive 모두 계측 바닥에 도달해 이 항목은 7.3의 주입 라인 캘리브레이션과
+  절대 상한 게이트로 교체됐다.
 
 보증하지 않음:
 
-- **등급 순서(Eco < Normal < High)가 아니다.** 제품에 아직 품질 등급이 없어
-  모든 등급 라벨이 동일하게 렌더되므로, 지금 그 게이트를 걸면 항상 통과하거나
-  항상 실패한다. Task 3에서 등급과 함께 추가한다.
+- **Task 2 당시에는 등급 순서(Eco < Normal < High)가 아니었다.** 제품에 품질 등급이
+  없었기 때문이다. Task 3b의 실제 측정 결과와 최종 게이트는 7.5에 기록했다.
 - 주관적 톤, IMD, CPU, 지연, 상태 복원, AU/VST 유효성, DAW 로딩은 별도 게이트다.
 - 이 수치는 특정 커밋/바이너리에 묶인 것이다. DSP가 바뀌면 다시 측정한다.
 
-## 4. Task 3에 남기는 것
+## 4. Task 2가 Task 3에 넘긴 초기 가설
+
+아래 항목은 당시 계획이며, Task 3/3b 실행 중 7절의 측정 결과로 수정됐다.
 
 1. `saturation`은 유지하고 `saturationQuality`(Eco/Normal/High)를 추가한 뒤,
    이 계측기 위에 **Normal이 Eco보다 최소 12 dB 개선**, **High는 Normal 대비 1 dB 이상
@@ -191,15 +194,31 @@ half-band FIR이 대부분을 담당하고 ADAA가 잔여분을 지우는 조합
 
 ### 7.4 지연과 CPU
 
-- 지연: 0 → **35 samples**(2x, eon half-band). 임펄스 왕복으로 측정해 정수임을 확인했고
-  `setLatencySamples`가 그대로 보고한다.
+- Task 3 시점 지연: 0 → **35 samples**(2x, eon half-band).
+- Task 3b 최종 지연: 모든 등급과 drive 0 바이패스를 **47 samples**로 고정했다. 2x 경로의
+  실제 임펄스 피크 35 samples에 12 samples를 보정한다. 4x 경로는 이론상 46.5 samples이고
+  실제 임펄스 피크가 47이므로 호스트에도 47을 보고한다. 등급 3개와 바이패스를 직접
+  임펄스로 검사하는 회귀 테스트가 있다.
 - CPU: `CpuBench` Release 중앙값 solo-unison8 **84.8 ms**, dense16-unison8 **1328.5 ms**
   (Phase 2 대비 +35%/+34%, 최초 baseline 1293.0 ms 대비 +2.7%). 상세는
   [cpu-optimization.md](cpu-optimization.md).
 
-### 7.5 남은 것
+### 7.5 Task 3b — 품질 등급 (완료)
 
-- 등급(`saturationQuality`)과 순서 게이트는 아직 없다. 위 측정으로 래더 설계가 정해졌다:
-  Eco = 2x half-band + 기존 tanh(교체 전 동작), Normal = 2x + ADAA(현재), High = 4x + ADAA.
-  "ADAA 단독"은 Eco 후보가 될 수 없다(-62.69 dBc).
-- 실청취(최대 드라이브의 2차 고조파 변화), 호스트 로드, pluginval/auval은 별도 게이트다.
+`saturationQuality` 선택 파라미터를 추가했다. 기본값과 구형 state 마이그레이션 값은
+**Normal**이다. 현재 커스텀 에디터에는 노출하지 않고 호스트 파라미터로만 제공한다.
+
+| 등급 | 경로 | 10 kHz 3차 접힘 proxy | CPU solo / dense16 |
+| --- | --- | ---: | ---: |
+| Eco | eon half-band 2x + 기존 tanh 곡선 | -153.12 dBc | 81.5 / 1268.9 ms |
+| Normal | eon half-band 2x + ADAA1 | -156.55 dBc | 85.8 / 1310.5 ms |
+| High | eon half-band 4x + ADAA1 | -156.74 dBc | 103.1 / 1629.1 ms |
+
+세 값 모두 계측 바닥에 붙어 절대 상한 `<= -150 dBc`를 통과한다. 13 kHz 2차 접힘 탐색
+측정도 Eco -64.95, Normal -66.82, High -65.73 dBc로 2 dB 안에 있고 단조 순서가 없었다.
+따라서 `Eco < Normal < High`라는 alias 순서 게이트는 증거와 맞지 않아 채택하지 않았다.
+대신 각 등급의 절대 상한, 선택 시 실제 렌더 변화, 고정 지연을 검사한다. High는 Normal보다
+dense16 CPU가 약 24% 높고, Eco는 약 3% 낮다. "ADAA 단독"은 여전히 후보가 아니다
+(-62.69 dBc).
+
+실청취(곡선과 4x 차이), 새 바이너리의 host load, pluginval/auval은 별도 게이트다.

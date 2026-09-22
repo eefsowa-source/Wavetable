@@ -122,6 +122,8 @@ static juce::AudioProcessorValueTreeState::ParameterLayout makeLayout()
     l.add (continuous ("resonance", "Resonance", 0.1f, 1.0f, 0.25f));
     l.add (continuous ("filterDrive", "Filter Drive", -12.0f, 24.0f, 0.0f));
     l.add (continuous ("saturation", "Saturation", 0.0f, 1.0f, 0.15f));
+    l.add (std::make_unique<C> ("saturationQuality", "Saturation Quality",
+                                juce::StringArray { "Eco", "Normal", "High" }, 1));
     l.add (continuous ("output", "Output", -60.0f, 6.0f, -6.0f));
     l.add (continuous ("filterEnvAmount", "Filter Envelope Amount", -1.0f, 1.0f, 0.5f));
     l.add (continuous ("masterWidth", "Master Width", 0.0f, 2.0f, 1.0f));
@@ -499,7 +501,7 @@ void HybridWavetableAudioProcessor::getStateInformation (juce::MemoryBlock& d)
 {
     auto state = parameters.copyState();
     std::unique_ptr<juce::XmlElement> xml (state.createXml());
-    xml->setAttribute ("stateSchemaVersion", 2);
+    xml->setAttribute ("stateSchemaVersion", 3);
     xml->setAttribute ("uiType", getUiType());
 
     juce::MemoryOutputStream tableData;
@@ -567,6 +569,23 @@ void HybridWavetableAudioProcessor::setStateInformation (const void* data, int s
         setDefaultIfMissing ("osc2Detune", 12.0f);
         setDefaultIfMissing ("osc3Detune", 12.0f);
         setDefaultIfMissing ("unisonKeyTrack", 0.0f);
+    }
+    if (stateSchemaVersion < 3)
+    {
+        bool hasSaturationQuality = false;
+        for (int index = 0; index < parameterState.getNumChildren(); ++index)
+        {
+            const auto parameter = parameterState.getChild (index);
+            hasSaturationQuality |= parameter.hasType ("PARAM")
+                                 && parameter.getProperty ("id").toString() == "saturationQuality";
+        }
+        if (! hasSaturationQuality)
+        {
+            juce::ValueTree parameter ("PARAM");
+            parameter.setProperty ("id", "saturationQuality", nullptr);
+            parameter.setProperty ("value", 1.0f, nullptr);
+            parameterState.addChild (parameter, -1, nullptr);
+        }
     }
     parameters.replaceState (parameterState);
 
