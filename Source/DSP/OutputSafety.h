@@ -19,6 +19,10 @@ public:
     bool clipActive() const noexcept { return clipActiveFlag.load (std::memory_order_relaxed); }
     void clearClipFlag() noexcept { clipActiveFlag.store (false, std::memory_order_relaxed); }
 
+    // Peak magnitude of the most recently processed buffer, after the ceiling.
+    // The audio thread only stores it; the editor polls it for a meter.
+    float peakLevel() const noexcept { return peakValue.load (std::memory_order_relaxed); }
+
 private:
     // Samples at or below this magnitude pass through the ceiling unchanged.
     // Above it the curve bends smoothly toward, but never reaches, full scale.
@@ -27,4 +31,5 @@ private:
     static constexpr int maximumChannels = 2;
     std::array<eon::DCBlocker, maximumChannels> dcBlockers {};
     std::atomic<bool> clipActiveFlag { false };
+    std::atomic<float> peakValue { 0.0f };
 };

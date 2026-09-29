@@ -480,7 +480,8 @@ void WavetableEditorComponent::mouseDrag (const juce::MouseEvent& e)
 
 HybridWavetableAudioProcessorEditor::HybridWavetableAudioProcessorEditor (HybridWavetableAudioProcessor& p)
     : AudioProcessorEditor (&p), processor (p), wavetableEditor (p)
-{
+    , outputMeter (p)
+    {
     setSize (1120, 760);
     setResizable (true, true);
     setResizeLimits (1040, 760, 1800, 1100);
@@ -492,6 +493,7 @@ HybridWavetableAudioProcessorEditor::HybridWavetableAudioProcessorEditor (Hybrid
     signatureLabel.setText ("aoi yume", juce::dontSendNotification);
     signatureLabel.setFont (juce::Font (juce::FontOptions { "Snell Roundhand", "Regular", 18.0f }.withHorizontalScale (0.94f)));
     addAndMakeVisible (signatureLabel);
+    addAndMakeVisible (outputMeter);
 
     auto setupSection = [this] (juce::Label& label, const juce::String& text)
     {
@@ -788,6 +790,8 @@ void HybridWavetableAudioProcessorEditor::resized()
     const bool compact = w < 1120;
     const int gap = juce::jmax (3, 6 - density);
     const int rowHeight = juce::jmax (26, 30 - density * 2);
+    // Fixed corner placement, independent of the skeleton/density layout.
+    outputMeter.setBounds (292, 30, 132, rowHeight);
 
     // Top tool row: preset / midi learn / audio / UI type selector.
     int topX = compact ? 420 : 430;

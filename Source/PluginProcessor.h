@@ -44,6 +44,12 @@ public:
     WavetableData wavetable;
     void publishWavetable();
     void loadAudioFile (const juce::File&);
+
+    // Output meter and clip state. Safe to poll from the editor: the audio
+    // thread only stores atomics.
+    float outputPeakLevel() const noexcept { return outputSafety.peakLevel(); }
+    bool outputClipActive() const noexcept { return outputSafety.clipActive(); }
+    void clearOutputClip() noexcept { outputSafety.clearClipFlag(); }
     static const juce::StringArray& getMidiLearnTargets();
     static const juce::StringArray& getFactoryPresetNames();
     void applyFactoryPreset (int index);

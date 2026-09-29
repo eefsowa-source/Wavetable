@@ -327,6 +327,24 @@ int main()
     }
 
     // Exercise the platform decoder path for common interchange formats.
+    // Output meter accessors (Plan C UX-2). The editor polls these; a silent
+    // block must report nothing and clearing must be safe when nothing clipped.
+    {
+        HybridWavetableAudioProcessor meterProcessor;
+        meterProcessor.prepareToPlay (48000.0, 256);
+        juce::AudioBuffer<float> silent (2, 256);
+        silent.clear();
+        juce::MidiBuffer noMidi;
+        meterProcessor.processBlock (silent, noMidi);
+        ok &= check (meterProcessor.outputPeakLevel() < 1.0e-6f,
+                     "the output meter reads zero for silence");
+        ok &= check (! meterProcessor.outputClipActive(),
+                     "silence does not raise the clip flag");
+        meterProcessor.clearOutputClip();
+        ok &= check (! meterProcessor.outputClipActive(),
+                     "clearing the clip flag is safe when it is already clear");
+    }
+
     const auto tempRoot = juce::File::getSpecialLocation (juce::File::tempDirectory);
     const auto wavFile = tempRoot.getNonexistentChildFile ("hybrid-wavetable-smoke", ".wav");
     const auto aiffFile = tempRoot.getNonexistentChildFile ("hybrid-wavetable-smoke", ".aiff");

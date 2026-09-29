@@ -3,7 +3,7 @@
 > **For agentic workers:** 각 태스크는 RED -> GREEN 순서로 진행하고, 태스크 단위로 커밋한다.
 
 **작성일:** 2026-09-29
-**상태:** IN PROGRESS (SQ-1, SQ-2, SQ-3, SQ-4 구현 + 자동 게이트 완료, 2026-09-29)
+**상태:** IN PROGRESS (SQ-1..SQ-4, UX-2 구현 + 자동 게이트 완료, 2026-09-29)
 **전제:** Plan B 계보(음질 기반 + eon_dsp 통합) 완료 상태에서 시작. `main`은 origin 대비 ahead 25, 미커밋 변경으로 Debug용 melatonin_inspector 통합이 추가됨(SOURCE_DIR 수정 포함).
 
 ## 1. 목표
@@ -94,8 +94,8 @@
 
 ### UX-2 — 출력 피드백 (레벨 미터 + 피크 인디케이터)
 
-* [ ] RT 안전(atomic/lock-free) 출력 미터, 클리핑 표시등. SQ-1과 연동해 clip 상태를 가시화.
-* [ ] 게이트: 스냅샷 결정성 유지 + 오디오 스레드 무할당 검증(기존 규칙).
+* [x] RT 안전 출력 미터 + 클립 LED. OutputSafety가 peak/clip을 atomic으로 게시하고 에디터가 30 Hz로 폴링. 클릭으로 클립 해제.
+* [x] 게이트: UiSnapshot 90종 90개 고유 md5 유지 + 픽셀 프로브로 타입 0/31/65/89에서 동일 배치 확인 + 오디오 스레드는 atomic store만.
 
 ### UX-3 — 편집 마찰 제거
 

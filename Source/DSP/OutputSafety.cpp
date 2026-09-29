@@ -15,6 +15,7 @@ void OutputSafety::reset() noexcept
     for (auto& blocker : dcBlockers)
         blocker.reset();
     clipActiveFlag.store (false, std::memory_order_relaxed);
+    peakValue.store (0.0f, std::memory_order_relaxed);
 }
 
 void OutputSafety::process (juce::AudioBuffer<float>& buffer) noexcept
@@ -22,6 +23,7 @@ void OutputSafety::process (juce::AudioBuffer<float>& buffer) noexcept
     const auto channels = juce::jmin (maximumChannels, buffer.getNumChannels());
     constexpr float knee = ceilingMaximum - ceilingThreshold;
     bool limited = false;
+    float bufferPeak = 0.0f;
     for (int channel = 0; channel < channels; ++channel)
     {
         auto* samples = buffer.getWritePointer (channel);
@@ -39,8 +41,10 @@ void OutputSafety::process (juce::AudioBuffer<float>& buffer) noexcept
                 limited = true;
             }
             samples[sample] = value;
+            bufferPeak = juce::jmax (bufferPeak, std::abs (value));
         }
     }
+    peakValue.store (bufferPeak, std::memory_order_relaxed);
     if (limited)
         clipActiveFlag.store (true, std::memory_order_relaxed);
 }

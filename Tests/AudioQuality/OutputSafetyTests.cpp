@@ -89,6 +89,8 @@ int main()
                                                                                  / rms (quietReference, 0)));
         test.expect (std::abs (quietGainErrorDb) < 0.02f,
                      "safety ceiling is transparent below the threshold");
+        test.expect (std::abs (ceilingSafety.peakLevel() - quiet.getMagnitude (0, quiet.getNumSamples())) < 1.0e-6f,
+                     "the reported peak matches the processed buffer below the threshold");
         test.expect (! ceilingSafety.clipActive(),
                      "safety ceiling leaves the clip flag clear below the threshold");
 
@@ -106,6 +108,8 @@ int main()
         test.expect (hotPeak < 1.0f,
                      juce::String ("safety ceiling keeps a hot signal inside full scale (peak ")
                          + juce::String (hotPeak, 4) + ")");
+        test.expect (ceilingSafety.peakLevel() > 0.99f && ceilingSafety.peakLevel() < 1.0f,
+                     "the reported peak tracks the limited output");
         test.expect (ceilingSafety.clipActive(),
                      "safety ceiling raises the clip flag when it limits");
         ceilingSafety.clearClipFlag();
