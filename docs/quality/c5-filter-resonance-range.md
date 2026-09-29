@@ -151,6 +151,30 @@ concurrent agent editing the main checkout could not contaminate the run.
   tracks Q to 0.000 dB
 * probe verified below the output ceiling across the whole travel
 
+## 7a. A measurement gap the wider range exposed
+
+Running the suite against a harmonic-rich default bank (work in progress on
+`Source/DSP/WavetableOscillator.cpp`, recorded in
+`docs/quality/d1-reference-spectrum-gap.md`) showed the saturation proxy was
+sitting on its own floor and could not see the thing it measured:
+
+| default bank | saturation 0.15 | saturation 1.00 | delta |
+| --- | ---: | ---: | ---: |
+| pure sine | -154.17 dBc | -154.22 dBc | **-0.05 dB** |
+| harmonic series | -125.39 dBc | -113.80 dBc | **+11.59 dB** |
+
+With a sine source the drive knob moved the number by 0.05 dB: the band-based
+proxy had nothing above its floor to measure, so the -150 dBc ceiling was
+satisfiable no matter what the saturation stage did. That is why the original
+`QualityOrderTests` header describes a history where driving the stage harder
+stopped moving the meter.
+
+This is not a consequence of the resonance change. It is the wider resonance
+range plus a realistic source making an instrument that was previously blind
+start reporting. Deciding whether -150 dBc is the right absolute target for a
+harmonic-rich source, and against what floor, is a separate call that belongs to
+the bank work rather than to this one.
+
 ## 8. Guarantees and limits
 
 Guaranteed:
