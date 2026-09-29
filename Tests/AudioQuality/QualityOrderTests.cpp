@@ -277,6 +277,119 @@ double foldedHarmonicAliasDbc (const juce::AudioBuffer<float>& buffer)
     return aliasBand - toneBand;
 }
 
+// ---------------------------------------------------------------------------
+// Plan C SQ-2: does the High tier ever buy anything measurable?
+//
+// High is the same ADAA1 curve as Normal behind a 4x oversampler instead of 2x
+// and costs about a quarter more CPU on a dense chord. The reference probe
+// above already puts every tier on the instrument floor, so this sweep pushes
+// the probe to frequencies whose third harmonic folds just above the host
+// Nyquist -- the regime a deeper oversampler is meant to serve -- and repeats
+// it at 96 kHz. Both are reported; the verdict gate is at the end.
+
+juce::AudioBuffer<float> renderProbeTone (double sampleRate, float tuneSemitones,
+                                          float saturation, int quality)
+{
+    audioquality::AudioQualityFixture fixture;
+    fixture.id = "tier-verdict-probe";
+    fixture.sampleRate = sampleRate;
+    fixture.blockSize = 127;
+    fixture.channels = 2;
+    fixture.durationSeconds = 0.5;
+    fixture.tailSeconds = 0.0;
+    fixture.randomSeed = kSeed;
+    fixture.midi = { { juce::MidiMessage::noteOn (1, kMidiNote, 0.8f), 0 } };
+    return audioquality::OfflineRenderer::render (fixture, [=] (auto& processor)
+    {
+        configureAliasTone (processor, saturation, tuneSemitones, quality);
+        // The shared probe config fixes the cutoff at 20 kHz, which would low-pass
+        // the high probes this sweep uses. Keep the filter well above the probe at
+        // either host rate instead of measuring the filter's rolloff as alias.
+        if (auto* parameter = processor.parameters.getParameter ("cutoff"))
+            parameter->setValueNotifyingHost (parameter->convertTo0to1 ((float) (0.45 * sampleRate)));
+    });
+}
+
+// Folded-third-harmonic proxy for an arbitrary sample rate and probe pitch.
+double foldedAliasDbcFor (const juce::AudioBuffer<float>& buffer, double sampleRate, double probeHz)
+{
+    const auto* samples = buffer.getReadPointer (0) + kWarmupSamples;
+    const double folded = std::abs (3.0 * probeHz - sampleRate);
+    const double toneBand = bandPowerDb (samples, kAnalysisSamples,
+                                         probeHz - kToneBandHalfWidthHz, probeHz + kToneBandHalfWidthHz);
+    const double aliasBand = bandPowerDb (samples, kAnalysisSamples,
+                                          folded - kAliasBandHalfWidthHz, folded + kAliasBandHalfWidthHz);
+    return aliasBand - toneBand;
+}
+
+void runHighTierVerdict (audioquality::TestHarness& test)
+{
+    std::printf ("\nPlan C SQ-2 saturation-tier verdict (max drive, folded third harmonic)\n");
+    // Probe pitches per host rate. Each sits above sr/6 so the third harmonic
+    // folds, and below the 20 kHz cutoff ceiling the plug-in exposes, so the
+    // filter is not doing the attenuating the proxy is asked to measure.
+    struct SweepCase { double sampleRate; std::vector<double> probesHz; };
+    const SweepCase sweep[] = {
+        { 48000.0, { 8600.0, 9200.0, 9800.0, 10400.0, 11000.0 } },
+        { 96000.0, { 16200.0, 17000.0, 17800.0, 18600.0, 19400.0 } },
+    };
+    const double noteHz = juce::MidiMessage::getMidiNoteInHertz (kMidiNote);
+    double bestHighOverNormal = -1.0e9;
+    int validCases = 0;
+    for (const auto& sweepCase : sweep)
+    {
+        const double sampleRate = sweepCase.sampleRate;
+        for (const double probeHz : sweepCase.probesHz)
+        {
+            const double folded = std::abs (3.0 * probeHz - sampleRate);
+            const double tune = 12.0 * std::log2 (probeHz / noteHz);
+            const bool bandsAreSane = folded + kAliasBandHalfWidthHz < 0.5 * sampleRate
+                                      && folded - kAliasBandHalfWidthHz > probeHz + kToneBandHalfWidthHz
+                                      && (folded + kAliasBandHalfWidthHz < 2.0 * probeHz - kToneBandHalfWidthHz
+                                          || folded - kAliasBandHalfWidthHz > 2.0 * probeHz + kToneBandHalfWidthHz);
+            if (std::abs (tune) > 24.0 || ! bandsAreSane)
+            {
+                std::printf ("  %5.0f Hz sr, probe %7.1f Hz: skipped (tune %.2f, bands %s)\n",
+                             sampleRate, probeHz, tune, bandsAreSane ? "ok" : "overlap");
+                continue;
+            }
+            const float tuneSemitones = (float) tune;
+            const double floorDbc = foldedAliasDbcFor (renderProbeTone (sampleRate, tuneSemitones, 0.0f, 1),
+                                                       sampleRate, probeHz);
+            // The floor is the saturation-bypassed path. If it is not deep, the
+            // folded band is picking up something other than the nonlinearity
+            // (at 96 kHz the fold lands above the 20 kHz cutoff, so the filter
+            // attenuates it), and the case cannot judge a tier.
+            if (floorDbc > -100.0)
+            {
+                std::printf ("  %5.0f Hz sr, probe %7.1f Hz: skipped (floor %+6.2f dBc, band not isolated)\n",
+                             sampleRate, probeHz, floorDbc);
+                continue;
+            }
+            const double eco = foldedAliasDbcFor (renderProbeTone (sampleRate, tuneSemitones, kHotSaturation, 0),
+                                                  sampleRate, probeHz);
+            const double normal = foldedAliasDbcFor (renderProbeTone (sampleRate, tuneSemitones, kHotSaturation, 1),
+                                                     sampleRate, probeHz);
+            const double high = foldedAliasDbcFor (renderProbeTone (sampleRate, tuneSemitones, kHotSaturation, 2),
+                                                   sampleRate, probeHz);
+            std::printf ("  %5.0f Hz sr, probe %7.1f Hz (fold %7.1f Hz): floor %7.2f | Eco %7.2f | Normal %7.2f | High %7.2f dBc  (High-Normal %+5.2f)\n",
+                         sampleRate, probeHz, folded, floorDbc, eco, normal, high, high - normal);
+            ++validCases;
+            bestHighOverNormal = juce::jmax (bestHighOverNormal, normal - high);
+        }
+    }
+    std::printf ("  valid cases %d, best High improvement over Normal %.2f dB\n",
+                 validCases, bestHighOverNormal);
+    // Verdict (Plan C SQ-2). The sweep above is the record of why the High tier
+    // was removed: before the change the 4x path never beat 2x by more than
+    // 0.33 dB and lost by up to 1.4 dB. With the tier gone the third choice
+    // renders as Normal, so the comparison sits at 0.00, which is the invariant
+    // this gate now protects. The pre-removal numbers are in
+    // docs/quality/c2-high-tier-verdict.md.
+    test.expect (bestHighOverNormal <= 0.01,
+                 "no saturation tier buys folded-alias headroom over the others (the 4x High tier was removed)");
+}
+
 // Independent pitch check that does not depend on the FFT grid at all:
 // linearly interpolated positive-going zero crossings of a tone-dominated signal.
 double measureFrequencyByZeroCrossings (const float* x, int count)
@@ -497,8 +610,10 @@ void runInstrumentTests (audioquality::TestHarness& test)
         };
         test.expect (maximumDifference (referenceRender (0), referenceRender (1)) > 1.0e-5f,
                      "changing quality to Eco alters the rendered signal");
-        test.expect (maximumDifference (referenceRender (1), referenceRender (2)) > 1.0e-5f,
-                     "changing quality to High alters the rendered signal");
+        // Plan C SQ-2 removed the 4x tier. The third choice stays for session
+        // compatibility and now renders as Normal.
+        test.expect (maximumDifference (referenceRender (1), referenceRender (2)) == 0.0f,
+                     "the deprecated High choice renders identically to Normal");
     }
 }
 } // namespace
@@ -507,6 +622,7 @@ int main()
 {
     audioquality::TestHarness test;
     runInstrumentTests (test);
+    runHighTierVerdict (test);
     std::printf ("\n%d failure(s)\n", test.failureCount());
     return test.result();
 }

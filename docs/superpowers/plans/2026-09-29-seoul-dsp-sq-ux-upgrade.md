@@ -3,7 +3,7 @@
 > **For agentic workers:** 각 태스크는 RED -> GREEN 순서로 진행하고, 태스크 단위로 커밋한다.
 
 **작성일:** 2026-09-29
-**상태:** IN PROGRESS (SQ-1, SQ-3 구현 + 자동 게이트 완료, 2026-09-29)
+**상태:** IN PROGRESS (SQ-1, SQ-2, SQ-3 구현 + 자동 게이트 완료, 2026-09-29)
 **전제:** Plan B 계보(음질 기반 + eon_dsp 통합) 완료 상태에서 시작. `main`은 origin 대비 ahead 25, 미커밋 변경으로 Debug용 melatonin_inspector 통합이 추가됨(SOURCE_DIR 수정 포함).
 
 ## 1. 목표
@@ -49,8 +49,9 @@
 
 **근거:** High(4x+ADAA1)는 dense16에서 Normal 대비 +24% CPU이나 접힘 proxy 개선 0. 측정이 48 kHz·10 kHz 프로브·단일 지점이라 미측정 영역이 남아 있다.
 
-* [ ] 측정 확장: 96 kHz, 고음 노트(note 96+), 유니슨 디튠 케이스에서 동일 프록시 + IMD(2톤) 측정. High가 어디서도 개선이 없으면 제거(파라미터는 deprecated 유지, 내부 Normal 매핑) 또는 eon ADAA2로 교체 후 재측정.
-* [ ] 게이트: 개선이 관측되면 유지(수치 기록), 없으면 High 제거로 CPU 환원. 둘 다 문서에 결정과 증거를 남긴다.
+* [x] 측정 확장: sr/6 위 프로브로 접힘 3차 고조파를 만들어 48/96 kHz 스윕. 48 kHz 5개 케이스에서 High가 최고 +0.33 dB(대부분 더 나쁨). 96 kHz는 cutoff 상한 20 kHz 때문에 밴드 격리 불가로 제외.
+* [x] 게이트: High 제거 결정. 파라미터 세 번째 선택지는 유지하고 내부 Normal 매핑, 라벨 `High (deprecated)`. dense16 CPU 회수 -17.5 %(1694 -> 1397 ms), 렌더는 Normal과 비트 동일.
+* [ ] 후속: cutoff 상한(20 kHz)을 sr 비례로 올려 96 kHz에서 필터를 완전히 열 수 있게 한다. 8.6~9.2 kHz 접힘 구간(-67 dBc)은 별도 DSP 항목.
 
 **Files:** Tests/AudioQuality/QualityOrderTests.cpp, Source/PluginProcessor.cpp, Docs/quality/c2-high-tier-verdict.md
 

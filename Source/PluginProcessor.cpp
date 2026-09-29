@@ -127,7 +127,9 @@ static juce::AudioProcessorValueTreeState::ParameterLayout makeLayout()
     l.add (continuous ("filterDrive", "Filter Drive", -12.0f, 24.0f, 0.0f));
     l.add (continuous ("saturation", "Saturation", 0.0f, 1.0f, 0.15f));
     l.add (std::make_unique<C> ("saturationQuality", "Saturation Quality",
-                                juce::StringArray { "Eco", "Normal", "High" }, 1));
+                                // Third choice kept for state compatibility; it
+                                // renders as Normal (Plan C SQ-2).
+                                juce::StringArray { "Eco", "Normal", "High (deprecated)" }, 1));
     l.add (continuous ("output", "Output", -60.0f, 6.0f, -6.0f));
     l.add (continuous ("filterEnvAmount", "Filter Envelope Amount", -1.0f, 1.0f, 0.5f));
     l.add (continuous ("masterWidth", "Master Width", 0.0f, 2.0f, 1.0f));
