@@ -128,6 +128,33 @@ double foldedThirdHarmonicHz()
     return std::abs (3.0 * probeFrequencyHz() - kSampleRate);
 }
 
+// Replaces every frame with a pure sine and rebuilds the mip bank.
+//
+// The alias probe needs a source with no harmonics of its own, because the
+// proxy band is |3*f0 - 48000| +/- 600 Hz and at this 10 kHz probe the source's
+// own third harmonic folds straight into it: 3 * 10002.18 = 30006.5 Hz, which
+// folds to 17993.5 Hz. Any H3 in the wave therefore lands in the measurement
+// band before the nonlinearity has done anything.
+//
+// That was free while the default bank was sin(x)*(1-0.35m) + 0.25*sin(2x)*m,
+// which has no H3 at all. The default bank now carries a real harmonic series
+// (docs/quality/d1-reference-spectrum-gap.md) and frame 0 measures H3 at -24.8
+// dB, so the probe installs its own sine rather than inheriting whatever the
+// shipped bank happens to contain.
+//
+// Not realtime safe (it runs FFTs), which is fine: probes render offline.
+void loadPureSineBank (WavetableData& table)
+{
+    for (int frame = 0; frame < WavetableData::numTables; ++frame)
+        for (int i = 0; i < WavetableData::tableSize; ++i)
+        {
+            const auto phase = juce::MathConstants<float>::twoPi * (float) i
+                             / (float) WavetableData::tableSize;
+            table.frames[(size_t) frame][(size_t) i] = std::sin (phase);
+        }
+    table.regenerateMips();
+}
+
 void configureAliasTone (HybridWavetableAudioProcessor& processor, float saturation,
                          float tuneSemitones, int quality = 1)
 {
@@ -137,9 +164,12 @@ void configureAliasTone (HybridWavetableAudioProcessor& processor, float saturat
             parameter->setValueNotifyingHost (parameter->convertTo0to1 (value));
     };
 
-    // Exactly one oscillator with one unison lane, on frame 0 of the default
-    // table, which is a pure sine. Everything the probe picks up is therefore
-    // generated downstream of the oscillator.
+    // Exactly one oscillator with one unison lane, reading frame 0 of a bank
+    // this probe supplies itself: a pure sine, so everything the probe picks up
+    // is generated downstream of the oscillator. See loadPureSineBank() for why
+    // that can no longer be left to the shipped default bank.
+    loadPureSineBank (processor.wavetable);
+    processor.publishWavetable();
     set ("osc1Level", 1.0f);
     set ("osc2Level", 0.0f);
     set ("osc3Level", 0.0f);

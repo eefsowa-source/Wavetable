@@ -1,16 +1,90 @@
 #include "WavetableOscillator.h"
 #include "WavetableImporter.h"
 
+namespace
+{
+    // Default bank content.
+    //
+    // The previous frames were sin(x)*(1-0.35m) + 0.25*sin(2x)*m, which holds
+    // exactly two partials. Measured against Serum and Vital on the same C4
+    // fixture, that made the shipped patch a near-sine: spectral centroid
+    // 264 Hz, H2 at -20.5 dB, H4 at -64.6 dB and nothing above H3, where the
+    // references sit at a 1418 Hz centroid with a full harmonic series out past
+    // H16. Bank limiting cannot add partials the table never had, so the cause
+    // was the content and not the mip selection (see
+    // docs/quality/d1-reference-spectrum-gap.md).
+    //
+    // The replacement keeps the same 16 frames and the same morph axis but
+    // fills each frame with a harmonic series whose tilt sweeps across the bank:
+    // frame 0 is near-sine so the default patch still starts clean, the middle
+    // is a full 1/h saw, and frame 15 is thin and bright with lifted even
+    // partials. Two properties beyond the spectrum itself matter:
+    //
+    //   - every frame is a sum of sines starting at phase 0, so it is exactly
+    //     DC-free and starts at a zero crossing (pinned by WavetableTests.cpp);
+    //   - every frame is peak-normalised to the same value, so the position
+    //     knob changes timbre without also changing level.
+    //
+    // 512 partials is the useful ceiling: the largest cap the mip bank asks for
+    // in practice is 64 (level 4 covers C4), and 2048 table samples cannot
+    // represent harmonics above 1023 without aliasing inside the table itself.
+    constexpr int defaultBankPartialCap = 512;
+
+    struct DefaultBankShape
+    {
+        double rolloff = 1.0;   // exponent on h; 1 = sawtooth
+        double evenBias = 1.0;  // extra weight on even partials
+    };
+
+    DefaultBankShape defaultBankShape (float morph) noexcept
+    {
+        // morph runs 0 -> 1 across the 16 frames.
+        //
+        // The rolloff exponent is the spectral tilt. It sweeps monotonically
+        // from a soft round wave at frame 0 to a bright, even-weighted one at
+        // frame 15, crossing sawtooth (1.0) around the middle of the bank:
+        //
+        //   frame  0 : 2.6, soft and round. The default patch must not open
+        //              with a full buzz.
+        //   frame  7 : ~1.4, sawtooth-like. This is the shape both references
+        //              measured (Serum H2..H8 roll off at roughly 1/h).
+        //   frame 15 : 0.7 with even partials lifted 1.6x, bright and slightly
+        //              hollow, the top of the bank.
+        //
+        // The 1.5 power on (1 - morph) front-loads the darkening so the low
+        // half of the bank changes character quickly where the ear is most
+        // sensitive to it, and leaves the bright end a finer control.
+        const auto t = (double) morph;
+        return { 0.70 + 1.90 * std::pow (1.0 - t, 1.5), 1.0 + 0.60 * t };
+    }
+}
+
 WavetableData::WavetableData()
 {
     for (int frame = 0; frame < numTables; ++frame)
+    {
+        const auto morph = (float) frame / (float) (numTables - 1);
+        const auto shape = defaultBankShape (morph);
+        float peak = 0.0f;
         for (int i = 0; i < tableSize; ++i)
         {
             const auto phase = juce::MathConstants<float>::twoPi * (float) i / (float) tableSize;
-            const float morph = (float) frame / (float) (numTables - 1);
-            frames[(size_t) frame][(size_t) i] = std::sin (phase)
-                * (1.0f - morph * 0.35f) + std::sin (phase * 2.0f) * morph * 0.25f;
+            double value = 0.0;
+            for (int harmonic = 1; harmonic <= defaultBankPartialCap; ++harmonic)
+            {
+                const auto h = (double) harmonic;
+                const auto even = (harmonic % 2 == 0) ? shape.evenBias : 1.0;
+                value += even * std::sin ((double) phase * h)
+                         / std::pow (h, shape.rolloff);
+            }
+            const auto sample = (float) value;
+            frames[(size_t) frame][(size_t) i] = sample;
+            peak = juce::jmax (peak, std::abs (sample));
         }
+        if (peak > 0.0f)
+            for (auto& sample : frames[(size_t) frame])
+                sample /= peak;
+    }
     regenerateMips();
 }
 

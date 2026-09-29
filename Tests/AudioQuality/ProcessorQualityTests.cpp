@@ -153,6 +153,23 @@ juce::AudioBuffer<float> renderDriveTone (float driveDecibels)
             if (auto* parameter = processor.parameters.getParameter (id))
                 parameter->setValueNotifyingHost (parameter->convertTo0to1 (value));
         };
+        // Drive is measured as harmonic content the drive itself adds, so the
+        // source must not bring harmonics of its own. Frame 0 of the shipped
+        // default bank is now a real harmonic series
+        // (docs/quality/d1-reference-spectrum-gap.md) and contributes about
+        // 18% THD at this probe by itself, which swamps the 0 dB reference and
+        // makes the +12 dB point non-monotone by 0.02 dB. The probe installs a
+        // pure sine so the numbers below describe the drive stage alone.
+        for (int frame = 0; frame < WavetableData::numTables; ++frame)
+            for (int i = 0; i < WavetableData::tableSize; ++i)
+            {
+                const auto phase = juce::MathConstants<float>::twoPi * (float) i
+                                 / (float) WavetableData::tableSize;
+                processor.wavetable.frames[(size_t) frame][(size_t) i] = std::sin (phase);
+            }
+        processor.wavetable.regenerateMips();
+        processor.publishWavetable();
+
         set ("osc1Level", 1.0f);
         set ("osc2Level", 0.0f);
         set ("osc3Level", 0.0f);
