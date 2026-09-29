@@ -290,3 +290,26 @@ if (BUILD_TESTING)
     MACOSX_DEPLOYMENT_TARGET "12.0")
   add_test(NAME AnalogColorCandidate COMMAND AnalogColorCandidateTests)
 endif()
+
+if(BUILD_TESTING)
+  # Renderer-backed filter resonance gate. The knob's range, not the TPT
+  # section, is what a host automates and what the reference wavetable synths
+  # (Serum, Vital, Massive, Surge XT) all expose, so this measures the rendered
+  # corner gain and ringing rather than the internal damping coefficient.
+  juce_add_console_app(FilterResonanceTests PRODUCT_NAME "Filter Resonance Tests")
+  juce_generate_juce_header(FilterResonanceTests)
+  target_sources(FilterResonanceTests PRIVATE
+    Tests/AudioQuality/FilterResonanceTests.cpp
+    Tests/AudioQuality/OfflineRenderer.cpp
+    Source/PluginProcessor.cpp Source/PluginEditor.cpp
+    Source/DSP/WavetableOscillator.cpp Source/DSP/WavetableImporter.cpp Source/DSP/OutputSafety.cpp Source/DSP/SynthVoice.cpp
+    Source/DSP/UnisonBank.cpp)
+  target_compile_features(FilterResonanceTests PRIVATE cxx_std_20)
+  target_compile_definitions(FilterResonanceTests PRIVATE JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0)
+  target_link_libraries(FilterResonanceTests PRIVATE
+    AudioQualitySupport juce::juce_audio_utils juce::juce_audio_processors
+    juce::juce_dsp juce::juce_gui_extra)
+  set_target_properties(FilterResonanceTests PROPERTIES MACOSX_DEPLOYMENT_TARGET "12.0")
+  add_test(NAME FilterResonance COMMAND FilterResonanceTests)
+  target_link_libraries(FilterResonanceTests PRIVATE eon::dsp)
+endif()

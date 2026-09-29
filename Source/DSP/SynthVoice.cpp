@@ -1,6 +1,8 @@
 #include "SynthVoice.h"
 #include <Dsp/RtGuard.h>
 
+#include <cstring>
+
 namespace SeoulDSPQuality
 {
 float filterEnvelopeCutoff (float baseCutoffHz, float envelopeAmount,
@@ -11,6 +13,18 @@ float filterEnvelopeCutoff (float baseCutoffHz, float envelopeAmount,
                                  + juce::jlimit (-4.0f, 4.0f, lfoCutoffOctaves);
     return juce::jlimit (20.0f, 0.45f * sampleRate,
                          baseCutoffHz * std::exp2 (modulationOctaves));
+}
+
+float filterResonanceQ (float parameter) noexcept
+{
+    constexpr float minimumQ = 0.5f;
+    constexpr float maximumQ = 20.0f;
+    const auto travel = juce::jlimit (0.0f, 1.0f,
+                                      (parameter - 0.1f) / 0.9f);
+    // Exponential rather than linear: Q is a ratio, so equal steps of Q sound
+    // like equal steps of pitch in the ring, and a linear knob would spend most
+    // of its travel in the inaudible bottom octave.
+    return minimumQ * std::pow (maximumQ / minimumQ, travel);
 }
 }
 
@@ -53,7 +67,13 @@ void SynthVoice::prepare (double sr, int blockSize, const std::atomic<const Wave
     {
         smoother.reset (sr, rampTimeMs / 1000.0f);
         const auto* parameter = params.getRawParameterValue (id);
-        const auto value = parameter != nullptr ? parameter->load() : fallback;
+        auto value = parameter != nullptr ? parameter->load() : fallback;
+        // Resonance is smoothed in Q rather than in raw parameter units, which
+        // moves the exponential mapping off the per-sample path and out of the
+        // audio callback's cost. It also makes a 50 ms glide a linear ramp in Q,
+        // which is what a resonant sweep sweeping through a note wants.
+        if (std::strcmp (id, "resonance") == 0)
+            value = SeoulDSPQuality::filterResonanceQ (value);
         smoother.setCurrentAndTargetValue (value);
     };
     initialiseSmoother (smoothedCutoff, "cutoff", 12000.0f);
@@ -145,7 +165,7 @@ void SynthVoice::renderNextBlock (juce::AudioBuffer<float>& output, int start, i
     
     // Update smoothed parameter targets
     smoothedCutoff.setTargetValue (cutoff->load());
-    smoothedResonance.setTargetValue (resonance->load());
+    smoothedResonance.setTargetValue (SeoulDSPQuality::filterResonanceQ (resonance->load()));
     smoothedOsc1Level.setTargetValue (params.getRawParameterValue ("osc1Level")->load());
     smoothedOsc2Level.setTargetValue (params.getRawParameterValue ("osc2Level")->load());
     smoothedOsc3Level.setTargetValue (params.getRawParameterValue ("osc3Level")->load());

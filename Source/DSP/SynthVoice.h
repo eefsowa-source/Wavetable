@@ -12,6 +12,29 @@ namespace SeoulDSPQuality
 float filterEnvelopeCutoff (float baseCutoffHz, float envelopeAmount,
                             float envelopeSample, float sampleRate,
                             float lfoCutoffOctaves = 0.0f) noexcept;
+
+// Maps the host's resonance parameter onto the section's Q.
+//
+// Why the mapping exists: the parameter's 0.1..1.0 range was handed straight to
+// the TPT section as Q, so the most resonant setting the plug-in could reach was
+// Q = 1 -- a 0 dB corner, no peak, and no ringing. Measured through the renderer
+// at a 1 kHz corner (Tests/AudioQuality/FilterResonanceTests.cpp), the whole
+// knob travelled Q 0.10 to 1.00, so the control was a damping trim rather than a
+// resonance control. Serum, Vital, Massive and Surge XT all put a pronounced peak
+// at the top of their resonance controls, so that range is the sound quality gap
+// this upgrade closes.
+//
+// Why a curve instead of a wider parameter range: the parameter keeps its id,
+// its 0.1..1.0 range and its stored numbers, so sessions, presets and MIDI CC
+// assignments all keep working unchanged. Only the interpretation of the value
+// moves. Every preset does get more resonance, which is the intended change and
+// is recorded in docs/quality/c5-filter-resonance-range.md rather than hidden.
+//
+// The endpoints are chosen so both ends of the knob mean something: 0.5 is
+// slightly past flat, where the filter is simply closed, and 20 is a resonant
+// peak that sustains a pitched tail for tens of cycles without approaching the
+// self-oscillation the reference instruments can reach.
+float filterResonanceQ (float parameter) noexcept;
 }
 
 class SynthSound : public juce::SynthesiserSound
