@@ -312,4 +312,25 @@ if(BUILD_TESTING)
   set_target_properties(FilterResonanceTests PROPERTIES MACOSX_DEPLOYMENT_TARGET "12.0")
   add_test(NAME FilterResonance COMMAND FilterResonanceTests)
   target_link_libraries(FilterResonanceTests PRIVATE eon::dsp)
+
+  # Factory presets, rendered and audited. The bank used to be ten fixed-seed
+  # random patches with names that promised characters the generator never
+  # aimed for; these gates check the contract, the ordering, and the level reach
+  # so a curated entry cannot silently ship inaudible, duplicated, or off-name.
+  juce_add_console_app(FactoryPresetTests PRODUCT_NAME "Factory Preset Tests")
+  juce_generate_juce_header(FactoryPresetTests)
+  target_sources(FactoryPresetTests PRIVATE
+    Tests/AudioQuality/FactoryPresetTests.cpp
+    Tests/AudioQuality/OfflineRenderer.cpp
+    Source/PluginProcessor.cpp Source/PluginEditor.cpp
+    Source/DSP/WavetableOscillator.cpp Source/DSP/WavetableImporter.cpp Source/DSP/OutputSafety.cpp Source/DSP/SynthVoice.cpp
+    Source/DSP/UnisonBank.cpp)
+  target_compile_features(FactoryPresetTests PRIVATE cxx_std_20)
+  target_compile_definitions(FactoryPresetTests PRIVATE JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0)
+  target_link_libraries(FactoryPresetTests PRIVATE
+    AudioQualitySupport juce::juce_audio_utils juce::juce_audio_processors
+    juce::juce_dsp juce::juce_gui_extra)
+  set_target_properties(FactoryPresetTests PROPERTIES MACOSX_DEPLOYMENT_TARGET "12.0")
+  add_test(NAME FactoryPreset COMMAND FactoryPresetTests)
+  target_link_libraries(FactoryPresetTests PRIVATE eon::dsp)
 endif()

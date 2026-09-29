@@ -36,51 +36,160 @@ namespace
         float filterAttack = 0.01f, filterDecay = 0.25f, filterSustain = 0.8f, filterRelease = 0.35f;
     };
 
+    // Output headroom is set per preset, not globally. A resonant filter puts a
+    // peak at its corner, so the high-Q entries need more output attenuation than
+    // a closed one: the first draft of this bank left NIGHT DRIVE at -0.01 dBFS
+    // and CIRCUIT BASS at -0.84 dBFS, both pinned against the output ceiling, so
+    // the ceiling was doing the level work instead of the patch. Those three
+    // entries now sit 6 to 13 dB lower.
+    //
+    // Resonance is stored as the host parameter and interpreted by
+    // SeoulDSPQuality::filterResonanceQ, which maps 0.1..1.0 onto Q 0.5..20 on
+    // an exponential curve. The values below are therefore chosen as Q targets
+    // and converted back to knob positions, rather than guessed. See
+    // docs/quality/c5-filter-resonance-range.md.
+    float knobForQ (float q) noexcept
+    {
+        // Inverse of Q = 0.5 * 40^travel over the 0.1..1.0 knob range.
+        return 0.1f + 0.9f * (std::log (q / 0.5f) / std::log (40.0f));
+    }
+
     const std::array<FactoryPreset, factoryPresetCount>& getFactoryPresets()
     {
-        static const auto presets = []
-        {
-            std::array<FactoryPreset, factoryPresetCount> values;
-            std::uint32_t state = 0xE0A2026u;
-            const auto next01 = [&state]
-            {
-                state ^= state << 13;
-                state ^= state >> 17;
-                state ^= state << 5;
-                return (float) (state & 0x00ffffffu) / 16777215.0f;
-            };
-            const auto range = [&next01] (float lo, float hi) { return lo + (hi - lo) * next01(); };
-            const auto time = [&next01] (float lo, float hi) { return std::exp (juce::jmap (next01(), std::log (lo), std::log (hi))); };
+        // Curated by hand. These were ten fixed-seed random patches whose names
+        // promised a character the numbers did not deliver -- "ACID VECTOR"
+        // shipped whatever the generator produced. Each entry below is now a
+        // designed patch that matches its name, and the names say what they are.
+        //
+        // Position notes, from the bank built in
+        // docs/quality/d2-spectral-tilt-bank.md: frame 0 is round (harmonic
+        // exponent 2.6), frame 7 is sawtooth-like (1.44), frame 15 is bright and
+        // even-weighted (0.70, even partials +60%). So a low position is a warm
+        // body and a high one is a bright lead, which is how the names below use
+        // them.
+        static const std::array<FactoryPreset, factoryPresetCount> presets {{
+            // 1. NEON PULSE - the bright lead that names the instrument. Bright
+            // position, 24 dB/oct opening, resonant but controlled, medium drive.
+            { /*osc1Pos*/ 0.78f, /*osc2Pos*/ 0.52f, /*osc3Pos*/ 0.31f,
+              /*osc1Level*/ 1.0f, /*osc2Level*/ 0.42f, /*osc3Level*/ 0.18f,
+              /*osc1Tune*/ 0.0f, /*osc2Tune*/ 7.0f, /*osc3Tune*/ -12.0f,
+              /*filterType*/ 0, /*filterSlope*/ 3,
+              /*cutoff*/ 3200.0f, /*resonance*/ knobForQ (2.6f), /*filterDrive*/ 4.0f,
+              /*saturation*/ 0.30f, /*output*/ -8.0f,
+              /*ampAttack*/ 0.006f, /*ampDecay*/ 0.32f, /*ampSustain*/ 0.72f, /*ampRelease*/ 0.28f,
+              /*filterAttack*/ 0.004f, /*filterDecay*/ 0.30f, /*filterSustain*/ 0.34f, /*filterRelease*/ 0.30f },
 
-            for (auto& preset : values)
-            {
-                // Random bank keeps the factory fifth-stack character; only the
-                // curated entries below override tuning/levels explicitly.
-                preset.osc1Pos = next01();
-                preset.osc2Pos = next01();
-                preset.osc3Pos = next01();
-                preset.filterType = juce::jlimit (0, 2, (int) (next01() * 3.0f));
-                preset.filterSlope = juce::jlimit (0, 3, (int) (next01() * 4.0f));
-                preset.cutoff = std::exp (juce::jmap (next01(), std::log (120.0f), std::log (16000.0f)));
-                preset.resonance = range (0.15f, 0.9f);
-                preset.filterDrive = range (-6.0f, 18.0f);
-                preset.saturation = range (0.02f, 0.85f);
-                preset.output = range (-12.0f, -1.0f);
-                preset.ampAttack = time (0.005f, 0.8f);
-                preset.ampDecay = time (0.05f, 2.5f);
-                preset.ampSustain = range (0.25f, 1.0f);
-                preset.ampRelease = time (0.05f, 3.0f);
-                preset.filterAttack = time (0.005f, 0.6f);
-                preset.filterDecay = time (0.05f, 2.0f);
-                preset.filterSustain = range (0.15f, 1.0f);
-                preset.filterRelease = time (0.05f, 2.5f);
-            }
-            // Curated preset: the historical default state (root + fifth up +
-            // fifth down) preserved as a factory entry before the default
-            // tuning changed to unison pitch.
-            values[10].filterSlope = 3;
-            return values;
-        }();
+            // 2. CHROME PLUCK - short, metallic, bright. The envelope is the
+            // instrument here: fast attack, no sustain, so it reads as struck.
+            { 0.88f, 0.64f, 0.40f,
+              1.0f, 0.30f, 0.12f,
+              0.0f, 12.0f, -5.0f,
+              0, 3,
+              5200.0f, knobForQ (4.5f), 9.0f,
+              0.42f, -10.0f,
+              0.002f, 0.14f, 0.10f, 0.22f,
+              0.002f, 0.10f, 0.06f, 0.18f },
+
+            // 3. VOID GLASS - the softest entry. Round position, slow everything,
+            // almost no drive: a wide soft pad that sits under everything.
+            { 0.06f, 0.18f, 0.10f,
+              0.85f, 0.55f, 0.40f,
+              0.0f, 7.0f, -7.0f,
+              0, 2,
+              900.0f, knobForQ (0.7f), 0.0f,
+              0.10f, -12.0f,
+              0.85f, 2.20f, 0.85f, 2.60f,
+              0.70f, 1.80f, 0.45f, 2.40f },
+
+            // 4. LASER PAD - bright and glassy but sustained. Saw position, open
+            // filter, slow swell: the wide bright counterpart to VOID GLASS.
+            { 0.72f, 0.84f, 0.60f,
+              0.80f, 0.62f, 0.45f,
+              0.0f, 12.0f, 3.0f,
+              0, 2,
+              2400.0f, knobForQ (1.1f), 2.0f,
+              0.18f, -11.0f,
+              0.60f, 1.60f, 0.78f, 1.90f,
+              0.90f, 1.40f, 0.55f, 1.70f },
+
+            // 5. ACID VECTOR - the one that has to earn its name. Round
+            // position for a hollow saw, high resonance, 18 dB/oct, envelope on
+            // the filter hard: a resonant bass line that opens as it decays.
+            { 0.22f, 0.34f, 0.14f,
+              1.0f, 0.55f, 0.20f,
+              0.0f, 0.0f, -12.0f,
+              0, 2,
+              260.0f, knobForQ (9.0f), 14.0f,
+              0.55f, -15.0f,
+              0.004f, 0.30f, 0.35f, 0.18f,
+              0.003f, 0.22f, 0.08f, 0.16f },
+
+            // 6. NIGHT DRIVE - overdriven and dark. Closed low-pass, heavy
+            // drive, fast: a distorted lead that stays focused.
+            { 0.34f, 0.48f, 0.26f,
+              1.0f, 0.48f, 0.22f,
+              0.0f, -5.0f, 7.0f,
+              0, 3,
+              1400.0f, knobForQ (2.0f), 19.0f,
+              0.68f, -16.0f,
+              0.004f, 0.24f, 0.68f, 0.26f,
+              0.006f, 0.26f, 0.30f, 0.24f },
+
+            // 7. STATIC BLOOM - filtered noise-like pad. Bright position, strong
+            // low-pass, slow everything, wide: the sound of a system waking up.
+            { 0.66f, 0.74f, 0.58f,
+              0.75f, 0.58f, 0.42f,
+              0.0f, 7.0f, -7.0f,
+              0, 1,
+              1400.0f, knobForQ (1.6f), 3.0f,
+              0.14f, -12.0f,
+              1.20f, 3.00f, 0.90f, 3.20f,
+              1.60f, 2.60f, 0.40f, 2.80f },
+
+            // 8. GHOST FM - hollow, tonal, low. Round position, detuned stack,
+            // band-pass to leave a formant: an electric-piano-adjacent tone.
+            { 0.30f, 0.38f, 0.26f,
+              0.90f, 0.66f, 0.50f,
+              0.0f, 3.0f, -3.0f,
+              2, 1,
+              1100.0f, knobForQ (2.2f), 1.0f,
+              0.16f, -11.0f,
+              0.010f, 0.90f, 0.40f, 0.90f,
+              0.020f, 0.70f, 0.25f, 0.80f },
+
+            // 9. CIRCUIT BASS - the deep one. Very low cutoff, high resonance so
+            // the sub harmonics ring, short decay: a tuned bass, not a boom.
+            { 0.16f, 0.24f, 0.12f,
+              1.0f, 0.40f, 0.15f,
+              0.0f, 0.0f, 0.0f,
+              0, 3,
+              150.0f, knobForQ (4.0f), 8.0f,
+              0.38f, -13.0f,
+              0.003f, 0.26f, 0.45f, 0.16f,
+              0.002f, 0.18f, 0.10f, 0.14f },
+
+            // 10. QUANTUM AIR - the brightest, most resonant entry. Top of the
+            // bank, full resonance travel, no drive: a pure resonant sweep.
+            { 1.00f, 0.86f, 0.68f,
+              0.70f, 0.50f, 0.35f,
+              0.0f, 12.0f, 7.0f,
+              0, 3,
+              7000.0f, knobForQ (16.0f), 0.0f,
+              0.08f, -13.0f,
+              0.30f, 1.40f, 0.82f, 1.80f,
+              0.50f, 1.20f, 0.50f, 1.60f },
+
+            // 11. FIFTHS - the historical default state, preserved. Root plus
+            // fifth up and fifth down, unison pitch, 24 dB/oct.
+            { 0.0f, 0.35f, 0.67f,
+              0.75f, 0.75f, 0.75f,
+              0.0f, 7.0f, -7.0f,
+              0, 3,
+              12000.0f, knobForQ (0.9f), 0.0f,
+              0.15f, -6.0f,
+              0.01f, 0.25f, 0.80f, 0.35f,
+              0.01f, 0.25f, 0.80f, 0.35f }
+        }};
         return presets;
     }
 }
@@ -711,11 +820,14 @@ const juce::StringArray& HybridWavetableAudioProcessor::getMidiLearnTargets()
 }
 const juce::StringArray& HybridWavetableAudioProcessor::getFactoryPresetNames()
 {
+    // Names match what the patches now are. The old list prefixed ten of them
+    // "RND", which was honest about how they were made and equally honest about
+    // the problem: the name promised a character the generator never aimed for.
     static const juce::StringArray names {
-        "RND 01 // NEON PULSE", "RND 02 // CHROME PLUCK", "RND 03 // VOID GLASS",
-        "RND 04 // LASER PAD", "RND 05 // ACID VECTOR", "RND 06 // NIGHT DRIVE",
-        "RND 07 // STATIC BLOOM", "RND 08 // GHOST FM", "RND 09 // CIRCUIT BASS",
-        "RND 10 // QUANTUM AIR", "STACK 11 // FIFTHS" };
+        "01 // NEON PULSE", "02 // CHROME PLUCK", "03 // VOID GLASS",
+        "04 // LASER PAD", "05 // ACID VECTOR", "06 // NIGHT DRIVE",
+        "07 // STATIC BLOOM", "08 // GHOST FM", "09 // CIRCUIT BASS",
+        "10 // QUANTUM AIR", "11 // FIFTHS" };
     return names;
 }
 void HybridWavetableAudioProcessor::applyFactoryPreset (int index)
