@@ -114,6 +114,16 @@ WavetableData WavetableImporter::import (const juce::AudioBuffer<float>& source,
     if (source.getNumChannels() == 0 || source.getNumSamples() == 0)
         return result;
 
+    // A wavetable holds a single cycle, so a multi-channel source collapses to
+    // the average of its channels. Before this, only channel 0 was read and any
+    // content that leaned right was silently dropped on import.
+    juce::AudioBuffer<float> mono (1, source.getNumSamples());
+    mono.clear();
+    const auto channelGain = 1.0f / (float) source.getNumChannels();
+    for (int channel = 0; channel < source.getNumChannels(); ++channel)
+        mono.addFrom (0, 0, source, channel, 0, source.getNumSamples(), channelGain);
+    const auto* sourceSamples = mono.getReadPointer (0);
+
     const bool hasMultipleFrames = source.getNumSamples()
                                    >= WavetableData::tableSize * WavetableData::numTables;
     const auto sourceFrameSize = hasMultipleFrames
@@ -123,7 +133,7 @@ WavetableData WavetableImporter::import (const juce::AudioBuffer<float>& source,
     for (int frame = 0; frame < WavetableData::numTables; ++frame)
     {
         const auto sourceFrame = hasMultipleFrames ? frame : 0;
-        resampleCyclic (source.getReadPointer (0, sourceFrame * sourceFrameSize),
+        resampleCyclic (sourceSamples + sourceFrame * sourceFrameSize,
                         sourceFrameSize, result.frames[(size_t) frame]);
         if (options.removeDc)
             removeMean (result.frames[(size_t) frame]);

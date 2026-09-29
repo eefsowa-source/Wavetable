@@ -132,5 +132,33 @@ int main()
                      "phase alignment resolves high-harmonic cyclic shifts");
     }
 
+    {
+        // Plan C SQ-4. A wavetable holds one cycle, so a multi-channel source
+        // has to become the average of its channels. Before this only channel 0
+        // was read, so anything panned right quietly disappeared on import.
+        constexpr int sourceSize = 4096;
+        juce::AudioBuffer<float> source (2, sourceSize);
+        for (int i = 0; i < sourceSize; ++i)
+        {
+            const auto phase = juce::MathConstants<float>::twoPi
+                               * (float) i / (float) sourceSize;
+            source.setSample (0, i, 0.6f * std::sin (phase));
+            source.setSample (1, i, 0.2f * std::sin (phase));
+        }
+        WavetableData imported;
+        imported.loadFromAudio (source);
+        double error = 0.0;
+        for (int i = 0; i < WavetableData::tableSize; ++i)
+        {
+            const auto expected = 0.4f * std::sin (juce::MathConstants<float>::twoPi
+                                                   * (float) i / (float) WavetableData::tableSize);
+            const auto difference = (double) imported.frames[0][(size_t) i] - expected;
+            error += difference * difference;
+        }
+        error = std::sqrt (error / (double) WavetableData::tableSize);
+        test.expect (error < 1.0e-4,
+                     "a multichannel import is the average of its channels");
+    }
+
     return test.result();
 }

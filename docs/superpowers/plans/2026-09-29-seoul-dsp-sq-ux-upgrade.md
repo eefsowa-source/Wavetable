@@ -3,7 +3,7 @@
 > **For agentic workers:** 각 태스크는 RED -> GREEN 순서로 진행하고, 태스크 단위로 커밋한다.
 
 **작성일:** 2026-09-29
-**상태:** IN PROGRESS (SQ-1, SQ-2, SQ-3 구현 + 자동 게이트 완료, 2026-09-29)
+**상태:** IN PROGRESS (SQ-1, SQ-2, SQ-3, SQ-4 구현 + 자동 게이트 완료, 2026-09-29)
 **전제:** Plan B 계보(음질 기반 + eon_dsp 통합) 완료 상태에서 시작. `main`은 origin 대비 ahead 25, 미커밋 변경으로 Debug용 melatonin_inspector 통합이 추가됨(SOURCE_DIR 수정 포함).
 
 ## 1. 목표
@@ -68,8 +68,9 @@
 
 ### SQ-4 — 임포트 테이블 품질 정책
 
-* [ ] 임포트 경로에 DC 제거·피크 정규화·band-limit(mip 빌드와 동일 정책) 여부를 코드 감사 → 결함 있으면 RED 테스트 후 수정.
-* [ ] 게이트: 임포트 fixture(고고조파 소스)로 alias 프록시가 네이티브 테이블 대비 명시 임계 이내.
+* [x] 감사: DC 제거(removeMean, 기본 on), 16-lobe sinc 밴드리밋(cutoff=min(1,1/speedRatio)), 은행 피크 상한 0.98, 위상 정렬이 이미 존재. **결함 1건**: 다중 채널 소스가 채널 0으로 축소됨(임포터 + 파일 로더 양쪽).
+* [x] 수정: 임포터와 `loadAudioFile`이 채널 평균으로 임포트. RED(임포터 0.6 vs 기대 0.4) → GREEN, 파일 경로는 ProcessorSmokeTests의 스테레오 WAV 테스트로 고정.
+* [ ] 후속: 임포트 결과의 folded-alias 정량 프록시(고고조파 소스 vs 네이티브 테이블). 현재는 기존 정확도 테스트 + 코드 감사로 갈음.
 
 ### SQ-5 — 미완료 호스트 게이트 완결
 

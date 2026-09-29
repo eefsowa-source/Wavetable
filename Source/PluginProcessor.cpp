@@ -654,6 +654,16 @@ void HybridWavetableAudioProcessor::loadAudioFile (const juce::File& file)
                               * (hasMultipleFrames ? WavetableData::numTables : 1);
     juce::AudioBuffer<float> data (1, importSamples);
     data.clear();
+    // Read the right channel too when the file has one: the table is mono, so
+    // the two channels are averaged below. Reading only the left channel (the
+    // previous reader flags) dropped everything panned right.
+    const bool hasRightChannel = r->numChannels >= 2;
+    juce::AudioBuffer<float> rightChannel;
+    if (hasRightChannel)
+    {
+        rightChannel.setSize (1, importSamples);
+        rightChannel.clear();
+    }
     const int framesToRead = hasMultipleFrames ? WavetableData::numTables : 1;
     for (int frame = 0; frame < framesToRead; ++frame)
     {
@@ -662,6 +672,14 @@ void HybridWavetableAudioProcessor::loadAudioFile (const juce::File& file)
                                                (sourceSegmentLength - sourceSamplesPerFrame) / 2);
         r->read (&data, frame * sourceSamplesPerFrame, sourceSamplesPerFrame,
                  segmentStart + centredOffset, true, false);
+        if (hasRightChannel)
+            r->read (&rightChannel, frame * sourceSamplesPerFrame, sourceSamplesPerFrame,
+                     segmentStart + centredOffset, false, true);
+    }
+    if (hasRightChannel)
+    {
+        data.addFrom (0, 0, rightChannel, 0, 0, importSamples, 1.0f);
+        data.applyGain (0.5f);
     }
     wavetable.loadFromAudio (data);
     publishWavetable();

@@ -37,6 +37,31 @@ static bool writeTestAudio (const juce::File& file, juce::AudioFormat& format)
     return writer->writeFromAudioSampleBuffer (source, 0, source.getNumSamples());
 }
 
+// Plan C SQ-4: a stereo file whose channels differ, so a left-only read is
+// distinguishable from the channel average.
+static bool writeStereoTestAudio (const juce::File& file, juce::AudioFormat& format)
+{
+    juce::AudioBuffer<float> source (2, WavetableData::tableSize);
+    for (int i = 0; i < source.getNumSamples(); ++i)
+    {
+        const auto phase = juce::MathConstants<float>::twoPi
+                           * (float) i / (float) source.getNumSamples();
+        source.setSample (0, i, 0.6f * std::sin (phase));
+        source.setSample (1, i, 0.2f * std::sin (phase));
+    }
+
+    std::unique_ptr<juce::OutputStream> output = file.createOutputStream();
+    if (output == nullptr)
+        return false;
+    const auto options = juce::AudioFormatWriterOptions().withSampleRate (48000.0)
+                                                         .withNumChannels (2)
+                                                         .withBitsPerSample (24);
+    auto writer = format.createWriterFor (output, options);
+    if (writer == nullptr)
+        return false;
+    return writer->writeFromAudioSampleBuffer (source, 0, source.getNumSamples());
+}
+
 static juce::File locateStateFixture()
 {
     auto directory = juce::File::getCurrentWorkingDirectory();
@@ -317,6 +342,15 @@ int main()
                  "AIFF import reaches the wavetable");
     wavFile.deleteFile();
     aiffFile.deleteFile();
+
+    const auto stereoFile = tempRoot.getNonexistentChildFile ("hybrid-wavetable-stereo", ".wav");
+    ok &= check (writeStereoTestAudio (stereoFile, wavFormat), "stereo test WAV is writable");
+    processor.loadAudioFile (stereoFile);
+    // The channels are 0.6 and 0.2 of the same sine, so a mono table holds 0.4.
+    // A left-only read would land on 0.6 and fail this by 0.2.
+    ok &= check (std::abs (processor.wavetable.frames[0][512] - 0.4f) < 0.02f,
+                 "stereo import averages both channels into the table");
+    stereoFile.deleteFile();
 
     processor.beginMidiLearn (3); // Cutoff (Osc 3 position is target 2)
     juce::MidiBuffer learn;
