@@ -22,6 +22,15 @@ FetchContent_Declare(
   GIT_SHALLOW TRUE)
 FetchContent_MakeAvailable(JUCE)
 
+FetchContent_Declare(
+  melatonin_inspector
+  GIT_REPOSITORY https://github.com/sudara/melatonin_inspector.git
+  GIT_TAG 9c483f865854d83fe9873e1c20e3fd772f695f80
+  # juce_add_module derives the module name from the directory basename, so the
+  # default _deps/melatonin_inspector-src path fails header discovery.
+  SOURCE_DIR ${CMAKE_BINARY_DIR}/melatonin_inspector)
+FetchContent_MakeAvailable(melatonin_inspector)
+
 juce_add_plugin(HybridWavetable
   COMPANY_NAME "EON Audio"
   BUNDLE_ID com.eonaudio.hybridwavetable
@@ -56,6 +65,10 @@ target_link_libraries(HybridWavetable PRIVATE
   juce::juce_audio_processors
   juce::juce_dsp
   juce::juce_gui_extra)
+target_link_libraries(HybridWavetable PUBLIC
+  "$<$<CONFIG:Debug>:melatonin_inspector>")
+target_compile_definitions(HybridWavetable PUBLIC
+  "$<$<CONFIG:Debug>:MELATONIN_INSPECTOR_ENABLED=1>")
 
 # Public because Source/DSP/SynthVoice.h pulls the vendored eon headers into
 # every target that compiles a voice, including via PluginProcessor.h.

@@ -3,6 +3,10 @@
 #include "PluginProcessor.h"
 #include "EditorTypes.h"
 
+#if defined(MELATONIN_INSPECTOR_ENABLED)
+#include <melatonin_inspector/melatonin_inspector.h>
+#endif
+
 class WavetableEditorComponent : public juce::Component
 {
 public:
@@ -75,6 +79,10 @@ std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> a1, a2, a3
     const seoului::Skin* activeSkin = &seoului::skins()[(size_t) 0];
     seoului::Layout activeLayout = seoului::layouts()[(size_t) 0];
     int uiType = 0;
+
+#if defined(MELATONIN_INSPECTOR_ENABLED)
+    melatonin::Inspector inspector { *this, false };
+#endif
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (HybridWavetableAudioProcessorEditor)
 };
