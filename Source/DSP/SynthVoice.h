@@ -52,6 +52,16 @@ private:
     // whose two-stage cascade was the only way to change the slope and whose
     // resonance parameter was a Q of at most 1.0 (see SlopeFilter.h).
     SlopeFilter voiceFilterLeft, voiceFilterRight;
+    // Slope and type are structural filter changes, not smoothed coefficients,
+    // so a step would leave a discontinuity. On a change the previous
+    // configuration keeps running for a short fade and the two outputs blend.
+    SlopeFilter previousFilterLeft, previousFilterRight;
+    int activeSlope = 1;
+    int activeType = 0;
+    int fadeSlope = 1;
+    int fadeType = 0;
+    int filterFadeSamplesRemaining = 0;
+    int filterFadeLength = 240;
     juce::ADSR ampEnv, filterEnv;
     juce::ADSR::Parameters ampParams, filterParams;
     double sampleRate = 44100.0;

@@ -31,6 +31,16 @@ void SynthVoice::prepare (double sr, int blockSize, const std::atomic<const Wave
     osc1Bank.prepare (sr); osc2Bank.prepare (sr); osc3Bank.prepare (sr);
     voiceFilterLeft.reset();
     voiceFilterRight.reset();
+    previousFilterLeft.reset();
+    previousFilterRight.reset();
+    filterFadeLength = juce::jmax (1, (int) (0.005 * sr));
+    filterFadeSamplesRemaining = 0;
+    activeSlope = (int) (params.getRawParameterValue ("filterSlope") != nullptr
+                             ? params.getRawParameterValue ("filterSlope")->load() : 1.0f);
+    activeType = (int) (params.getRawParameterValue ("filterType") != nullptr
+                            ? params.getRawParameterValue ("filterType")->load() : 0.0f);
+    fadeSlope = activeSlope;
+    fadeType = activeType;
     ampEnv.setSampleRate (sr); filterEnv.setSampleRate (sr);
     saturationStage.prepare (blockSize);
     preSaturationBuffer.setSize (2, juce::jmax (1, blockSize), false, true, true);
@@ -79,6 +89,12 @@ void SynthVoice::startNote (int midiNoteNumber, float velocity, juce::Synthesise
     filterParams.attack = value ("filterAttack", 0.01f); filterParams.decay = value ("filterDecay", 0.25f); filterParams.sustain = value ("filterSustain", 0.8f); filterParams.release = value ("filterRelease", 0.35f);
     ampEnv.setParameters (ampParams); filterEnv.setParameters (filterParams);
     ampEnv.noteOn(); filterEnv.noteOn();
+    // A stale fade from the previous note must not bleed into this one.
+    filterFadeSamplesRemaining = 0;
+    activeSlope = (int) value ("filterSlope", 1.0f);
+    activeType = (int) value ("filterType", 0.0f);
+    fadeSlope = activeSlope;
+    fadeType = activeType;
     
 }
 
@@ -113,6 +129,19 @@ void SynthVoice::renderNextBlock (juce::AudioBuffer<float>& output, int start, i
     const auto* osc3Spread = params.getRawParameterValue ("osc3Spread");
     const auto type = (int) params.getRawParameterValue ("filterType")->load();
     const auto slope = (int) params.getRawParameterValue ("filterSlope")->load();
+
+    // A slope or type change swaps the filter structure. Snapshot the running
+    // filter and blend from it for a few milliseconds so the swap is not a step.
+    if (slope != activeSlope || type != activeType)
+    {
+        previousFilterLeft = voiceFilterLeft;
+        previousFilterRight = voiceFilterRight;
+        fadeSlope = activeSlope;
+        fadeType = activeType;
+        activeSlope = slope;
+        activeType = type;
+        filterFadeSamplesRemaining = filterFadeLength;
+    }
     
     // Update smoothed parameter targets
     smoothedCutoff.setTargetValue (cutoff->load());
@@ -221,6 +250,11 @@ void SynthVoice::renderNextBlock (juce::AudioBuffer<float>& output, int start, i
                                                                               lfoCutoffOctaves);
         voiceFilterLeft.setParams (slope, type, modulatedCutoff, resonance, filterDriveDb, sampleRate);
         voiceFilterRight.setParams (slope, type, modulatedCutoff, resonance, filterDriveDb, sampleRate);
+        if (filterFadeSamplesRemaining > 0)
+        {
+            previousFilterLeft.setParams (fadeSlope, fadeType, modulatedCutoff, resonance, filterDriveDb, sampleRate);
+            previousFilterRight.setParams (fadeSlope, fadeType, modulatedCutoff, resonance, filterDriveDb, sampleRate);
+        }
         float osc1Left = 0.0f, osc1Right = 0.0f;
         float osc2Left = 0.0f, osc2Right = 0.0f;
         float osc3Left = 0.0f, osc3Right = 0.0f;
@@ -236,9 +270,27 @@ void SynthVoice::renderNextBlock (juce::AudioBuffer<float>& output, int start, i
                                 osc3SpreadValue, osc3Left, osc3Right);
         float left = (osc1Left * l1 + osc2Left * l2 + osc3Left * l3) / 3.0f;
         float right = (osc1Right * l1 + osc2Right * l2 + osc3Right * l3) / 3.0f;
-        left = voiceFilterLeft.process (left);
+        const float filterInputLeft = left;
+        const float filterInputRight = right;
+        float filteredLeft = voiceFilterLeft.process (filterInputLeft);
+        float filteredRight = 0.0f;
         if (outRight != nullptr)
-            right = voiceFilterRight.process (right);
+            filteredRight = voiceFilterRight.process (filterInputRight);
+        if (filterFadeSamplesRemaining > 0)
+        {
+            const float t = 1.0f - (float) filterFadeSamplesRemaining / (float) filterFadeLength;
+            const float previousLeft = previousFilterLeft.process (filterInputLeft);
+            filteredLeft = previousLeft + (filteredLeft - previousLeft) * t;
+            if (outRight != nullptr)
+            {
+                const float previousRight = previousFilterRight.process (filterInputRight);
+                filteredRight = previousRight + (filteredRight - previousRight) * t;
+            }
+            --filterFadeSamplesRemaining;
+        }
+        left = filteredLeft;
+        if (outRight != nullptr)
+            right = filteredRight;
         const float vcaGain = env * level * 0.25f;
         const float vcaLeft = left * vcaGain;
         const float vcaRight = right * vcaGain;

@@ -5,7 +5,8 @@
 namespace audioquality
 {
 juce::AudioBuffer<float> OfflineRenderer::render (const AudioQualityFixture& fixture,
-                                                   const std::function<void (HybridWavetableAudioProcessor&)>& configure)
+                                                   const std::function<void (HybridWavetableAudioProcessor&)>& configure,
+                                                   const std::function<void (HybridWavetableAudioProcessor&, int)>& onBlock)
 {
     const auto channels = juce::jlimit (1, 2, fixture.channels);
     const auto sampleRate = fixture.sampleRate > 0.0 ? fixture.sampleRate : 48000.0;
@@ -29,12 +30,17 @@ juce::AudioBuffer<float> OfflineRenderer::render (const AudioQualityFixture& fix
     });
 
     size_t nextEvent = 0;
+    int blockIndex = 0;
     for (int absoluteStart = 0; absoluteStart < totalSamples; absoluteStart += blockSize)
     {
         const auto samplesThisBlock = juce::jmin (blockSize, totalSamples - absoluteStart);
         juce::AudioBuffer<float> block (channels, samplesThisBlock);
         block.clear();
         juce::MidiBuffer midi;
+        // Runs on the caller's thread before the block is rendered, so a test
+        // can step a parameter between blocks and observe the transition.
+        if (onBlock)
+            onBlock (processor, blockIndex);
         while (nextEvent < events.size() && events[nextEvent].sampleOffset < absoluteStart)
             ++nextEvent;
         auto eventCursor = nextEvent;
@@ -48,6 +54,7 @@ juce::AudioBuffer<float> OfflineRenderer::render (const AudioQualityFixture& fix
         processor.processBlock (block, midi);
         for (int channel = 0; channel < channels; ++channel)
             result.copyFrom (channel, absoluteStart, block, channel, 0, samplesThisBlock);
+        ++blockIndex;
     }
     processor.releaseResources();
     return result;

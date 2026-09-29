@@ -3,7 +3,7 @@
 > **For agentic workers:** 각 태스크는 RED -> GREEN 순서로 진행하고, 태스크 단위로 커밋한다.
 
 **작성일:** 2026-09-29
-**상태:** IN PROGRESS (SQ-1 구현 + 자동 게이트 완료, 2026-09-29)
+**상태:** IN PROGRESS (SQ-1, SQ-3 구현 + 자동 게이트 완료, 2026-09-29)
 **전제:** Plan B 계보(음질 기반 + eon_dsp 통합) 완료 상태에서 시작. `main`은 origin 대비 ahead 25, 미커밋 변경으로 Debug용 melatonin_inspector 통합이 추가됨(SOURCE_DIR 수정 포함).
 
 ## 1. 목표
@@ -58,9 +58,10 @@
 
 **근거:** filterType/slope, 유니슨 카운트/디튠, ADSR 타겟 등은 스무더 밖. 호스트 오토메이션/프리셋 스냅 시 스텝 불연속이 클릭으로 나타날 수 있다.
 
-* [ ] RED: 렌더 중 파라미터 스텝(slope 0→3, filterType, unison 1→8)을 가한 뒤 샘플간 최대 점프를 측정하는 오프라인 테스트. 임계 초과 시 실패로 고정.
-* [ ] GREEN: 클릭이 확인된 파라미터만 스무딩 또는 짧은 크로스페이드 추가 (무차별 스무딩 금지 — 엔벌로프 어택 스무딩은 음질 훼손 가능).
-* [ ] 게이트: 스텝 테스트 통과 + 기존 스위트 유지.
+* [x] RED: `renderHeldNote()` + per-block `onBlock` 훅으로 스텝 감사. slope 10.5배, type 9.0배 클릭 확인 (unison 2.3배는 통과).
+* [x] GREEN: SynthVoice에 5 ms 구조 전환 크로스페이드(이전 SlopeFilter 인스턴스 유지 + 블렌드). slope/type 모두 기준선과 동일 수준(1.0배)으로 개선.
+* [x] 게이트(자동): 스텝 감사 통과 + Release/Debug 12/12 + CPU 변동 범위.
+* [ ] 게이트(청취): 실제 클릭 유무를 SQ-6 청취에서 확인. unison 전환(2.3배) 잔여 항목은 별도.
 
 **Files:** Source/DSP/SynthVoice.cpp, Tests/AudioQuality/, Docs/quality/c3-zipper-audit.md
 

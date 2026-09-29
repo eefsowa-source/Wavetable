@@ -247,6 +247,72 @@ juce::AudioBuffer<float> renderWorstCaseChord()
         set ("output", -6.0f);
     });
 }
+
+// A held note on a clean, steady path, so a discontinuity a parameter step
+// introduces stands out against the tone's own sample-to-sample slope.
+juce::AudioBuffer<float> renderHeldNote (
+    const std::function<void (HybridWavetableAudioProcessor&, int)>& onBlock = {})
+{
+    audioquality::AudioQualityFixture fixture;
+    fixture.id = "held-note";
+    fixture.durationSeconds = 1.0;
+    fixture.tailSeconds = 0.0;
+    fixture.randomSeed = 909u;
+    fixture.midi = { { juce::MidiMessage::noteOn (1, 60, 0.9f), 0 } };
+    return audioquality::OfflineRenderer::render (fixture, [] (auto& processor)
+    {
+        const auto set = [&] (const char* id, float value)
+        {
+            if (auto* parameter = processor.parameters.getParameter (id))
+                parameter->setValueNotifyingHost (parameter->convertTo0to1 (value));
+        };
+        set ("osc1Level", 1.0f);
+        set ("osc2Level", 0.0f);
+        set ("osc3Level", 0.0f);
+        set ("osc1Unison", 1.0f);
+        set ("filterType", 0.0f);
+        set ("filterSlope", 0.0f);
+        set ("cutoff", 2000.0f);
+        set ("resonance", 0.3f);
+        set ("filterDrive", 0.0f);
+        set ("saturation", 0.0f);
+        set ("filterEnvAmount", 0.0f);
+        set ("lfo1Depth", 0.0f);
+        set ("lfo2Depth", 0.0f);
+        set ("driftDepth", 0.0f);
+        set ("ampAttack", 0.001f);
+        set ("ampDecay", 0.001f);
+        set ("ampSustain", 1.0f);
+        set ("delayMix", 0.0f);
+        set ("reverbMix", 0.0f);
+        set ("masterWidth", 1.0f);
+        set ("output", 0.0f);
+    }, onBlock);
+}
+
+// Largest single-sample jump in a window, and where it happens.
+struct JumpReport { float maxJump = 0.0f; int index = 0; };
+
+JumpReport largestJump (const juce::AudioBuffer<float>& buffer, int first, int last)
+{
+    JumpReport report;
+    for (int channel = 0; channel < buffer.getNumChannels(); ++channel)
+    {
+        const auto* samples = buffer.getReadPointer (channel);
+        const int begin = juce::jmax (1, first);
+        const int end = juce::jmin (last, buffer.getNumSamples());
+        for (int sample = begin; sample < end; ++sample)
+        {
+            const auto jump = std::abs (samples[sample] - samples[sample - 1]);
+            if (jump > report.maxJump)
+            {
+                report.maxJump = jump;
+                report.index = sample;
+            }
+        }
+    }
+    return report;
+}
 }
 
 namespace
@@ -521,6 +587,49 @@ int main()
         std::printf ("  +24 dB drive peak = %.3f (finite %d)\n", drivenPeak, (int) drivenFinite);
         test.expect (drivenFinite, "the driven filter output stays finite");
         test.expect (drivenPeak < 2.0f, "the driven filter output stays bounded below +6 dBFS");
+    }
+
+    // Parameter-step click audit (Plan C SQ-3). Filter slope and type are
+    // structural: they change the filter, not just a coefficient, and they are
+    // read once per block rather than smoothed. A step mid-note must not
+    // introduce a discontinuity much larger than the tone's own slope.
+    {
+        constexpr int blockSize = 128;
+        constexpr int switchBlock = 187;   // about 0.5 s at 48 kHz
+        const int switchSample = switchBlock * blockSize;
+        const auto steady = renderHeldNote();
+        const auto withSlopeStep = renderHeldNote ([switchBlock] (auto& processor, int blockIndex)
+        {
+            if (blockIndex != switchBlock) return;
+            if (auto* parameter = processor.parameters.getParameter ("filterSlope"))
+                parameter->setValueNotifyingHost (parameter->convertTo0to1 (3.0f));
+        });
+        const auto withTypeStep = renderHeldNote ([switchBlock] (auto& processor, int blockIndex)
+        {
+            if (blockIndex != switchBlock) return;
+            if (auto* parameter = processor.parameters.getParameter ("filterType"))
+                parameter->setValueNotifyingHost (parameter->convertTo0to1 (2.0f));
+        });
+        const auto withUnisonStep = renderHeldNote ([switchBlock] (auto& processor, int blockIndex)
+        {
+            if (blockIndex != switchBlock) return;
+            if (auto* parameter = processor.parameters.getParameter ("osc1Unison"))
+                parameter->setValueNotifyingHost (parameter->convertTo0to1 (8.0f));
+        });
+        const int windowFirst = switchSample - 256;
+        const int windowLast = switchSample + 2048;
+        const auto steadyJump = largestJump (steady, windowFirst, windowLast);
+        const auto slopeJump = largestJump (withSlopeStep, windowFirst, windowLast);
+        const auto typeJump = largestJump (withTypeStep, windowFirst, windowLast);
+        const auto unisonJump = largestJump (withUnisonStep, windowFirst, windowLast);
+        std::printf ("  step-jump audit: steady %.5f | slope %.5f | type %.5f | unison %.5f\n",
+                     steadyJump.maxJump, slopeJump.maxJump, typeJump.maxJump, unisonJump.maxJump);
+        test.expect (slopeJump.maxJump < 4.0f * steadyJump.maxJump,
+                     "filter slope step does not click");
+        test.expect (typeJump.maxJump < 4.0f * steadyJump.maxJump,
+                     "filter type step does not click");
+        test.expect (unisonJump.maxJump < 4.0f * steadyJump.maxJump,
+                     "unison count step does not click");
     }
 
     // Output headroom (Plan C SQ-1). A dense chord with the full oscillator
