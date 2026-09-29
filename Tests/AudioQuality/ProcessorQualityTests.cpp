@@ -3,6 +3,7 @@
 #include "../../Source/DSP/SaturationStage.h"
 #include "../../Source/DSP/SlopeFilter.h"
 #include "Dsp/Measure.h"
+#include "Metrics.h"
 #include "OfflineRenderer.h"
 #include "TestHarness.h"
 
@@ -187,6 +188,63 @@ juce::AudioBuffer<float> renderWithSaturation (float saturation)
         set ("osc1Unison", 1.0f);
         set ("saturation", saturation);
         set ("output", 0.0f);
+    });
+}
+
+// Worst-case legal patch (Plan C SQ-1). A dense chord with every oscillator's
+// unison bank at maximum is the loudest sum the oscillator section can make,
+// and the master output stays at its default -6 dB, so this measures the
+// internal gain staging rather than a user cranking the master fader. A peak
+// above 0 dBFS means a legal patch can clip the host's output.
+juce::AudioBuffer<float> renderWorstCaseChord()
+{
+    audioquality::AudioQualityFixture fixture;
+    fixture.id = "worst-case-chord";
+    fixture.durationSeconds = 1.0;
+    fixture.tailSeconds = 0.1;
+    fixture.randomSeed = 0x5eed0101u;
+    const int firstNote = 48;
+    for (int note = 0; note < 16; ++note)
+    {
+        fixture.midi.push_back ({ juce::MidiMessage::noteOn (1, firstNote + note, 1.0f), 0 });
+        fixture.midi.push_back ({ juce::MidiMessage::noteOff (1, firstNote + note),
+                                  (int) std::llround (fixture.durationSeconds * fixture.sampleRate * 0.75) });
+    }
+    return audioquality::OfflineRenderer::render (fixture, [] (auto& processor)
+    {
+        const auto set = [&] (const char* id, float value)
+        {
+            if (auto* parameter = processor.parameters.getParameter (id))
+                parameter->setValueNotifyingHost (parameter->convertTo0to1 (value));
+        };
+        for (int osc = 1; osc <= 3; ++osc)
+        {
+            const auto prefix = juce::String ("osc") + juce::String (osc);
+            set ((prefix + "Level").toRawUTF8(), 1.0f);
+            set ((prefix + "Unison").toRawUTF8(), 8.0f);
+            set ((prefix + "Spread").toRawUTF8(), 1.0f);
+            set ((prefix + "Detune").toRawUTF8(), 50.0f);
+            set ((prefix + "Tune").toRawUTF8(), 0.0f);
+        }
+        set ("unisonKeyTrack", 0.0f);
+        set ("filterType", 0.0f);
+        set ("filterSlope", 3.0f);
+        set ("cutoff", 20000.0f);
+        set ("resonance", 0.1f);
+        set ("filterDrive", 0.0f);
+        set ("saturation", 1.0f);
+        set ("filterEnvAmount", 0.0f);
+        set ("ampAttack", 0.001f);
+        set ("ampDecay", 0.001f);
+        set ("ampSustain", 1.0f);
+        set ("ampRelease", 0.05f);
+        set ("lfo1Depth", 0.0f);
+        set ("lfo2Depth", 0.0f);
+        set ("driftDepth", 0.0f);
+        set ("delayMix", 0.0f);
+        set ("reverbMix", 0.0f);
+        set ("masterWidth", 1.0f);
+        set ("output", -6.0f);
     });
 }
 }
@@ -463,6 +521,20 @@ int main()
         std::printf ("  +24 dB drive peak = %.3f (finite %d)\n", drivenPeak, (int) drivenFinite);
         test.expect (drivenFinite, "the driven filter output stays finite");
         test.expect (drivenPeak < 2.0f, "the driven filter output stays bounded below +6 dBFS");
+    }
+
+    // Output headroom (Plan C SQ-1). A dense chord with the full oscillator
+    // bank at maximum must not exceed full scale on its own; the master output
+    // is left at its default so the number reflects the internal gain staging.
+    {
+        const auto chord = renderWorstCaseChord();
+        const auto metrics = audioquality::measureAudio (chord, 48000.0);
+        std::printf ("  worst-case chord peak = %.3f dBFS (true peak %.3f dBTP)\n",
+                     metrics.samplePeakDbFS, metrics.truePeakDbTP);
+        test.expect (metrics.finite, "the worst-case chord renders finite output");
+        test.expect (metrics.samplePeakDbFS <= 0.0,
+                     juce::String ("the worst-case legal patch stays at or below 0 dBFS (measured ")
+                         + juce::String (metrics.samplePeakDbFS, 2) + " dBFS)");
     }
 
     return test.result();

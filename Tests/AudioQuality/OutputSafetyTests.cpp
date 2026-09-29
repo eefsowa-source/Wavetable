@@ -65,5 +65,52 @@ int main()
                                                                        / rms (reference, 4800)));
     test.expect (std::abs (gainErrorDb) < 0.01f,
                  "output DC blocker is transparent at 1 kHz");
+
+    // Safety ceiling (Plan C SQ-1). Below the threshold the stage must stay
+    // transparent; above it the output must remain inside full scale so a legal
+    // patch cannot clip the host, and the clip flag must report it.
+    {
+        OutputSafety ceilingSafety;
+        ceilingSafety.prepare (sampleRate);
+        juce::AudioBuffer<float> quiet (2, 4096);
+        juce::AudioBuffer<float> quietReference (2, 4096);
+        for (int sample = 0; sample < quiet.getNumSamples(); ++sample)
+        {
+            const auto value = 0.5f * std::sin (juce::MathConstants<float>::twoPi
+                                                 * 250.0f * (float) sample / (float) sampleRate);
+            for (int channel = 0; channel < 2; ++channel)
+            {
+                quiet.setSample (channel, sample, value);
+                quietReference.setSample (channel, sample, value);
+            }
+        }
+        ceilingSafety.process (quiet);
+        const auto quietGainErrorDb = juce::Decibels::gainToDecibels ((float) (rms (quiet, 0)
+                                                                                 / rms (quietReference, 0)));
+        test.expect (std::abs (quietGainErrorDb) < 0.02f,
+                     "safety ceiling is transparent below the threshold");
+        test.expect (! ceilingSafety.clipActive(),
+                     "safety ceiling leaves the clip flag clear below the threshold");
+
+        juce::AudioBuffer<float> hot (2, 4096);
+        for (int sample = 0; sample < hot.getNumSamples(); ++sample)
+        {
+            const auto value = 8.0f * std::sin (juce::MathConstants<float>::twoPi
+                                                * 250.0f * (float) sample / (float) sampleRate);
+            for (int channel = 0; channel < 2; ++channel)
+                hot.setSample (channel, sample, value);
+        }
+        ceilingSafety.process (hot);
+        const auto hotPeak = hot.getMagnitude (0, hot.getNumSamples());
+        std::printf ("  safety ceiling hot peak = %.6f\n", hotPeak);
+        test.expect (hotPeak < 1.0f,
+                     juce::String ("safety ceiling keeps a hot signal inside full scale (peak ")
+                         + juce::String (hotPeak, 4) + ")");
+        test.expect (ceilingSafety.clipActive(),
+                     "safety ceiling raises the clip flag when it limits");
+        ceilingSafety.clearClipFlag();
+        test.expect (! ceilingSafety.clipActive(),
+                     "clearClipFlag resets the clip indicator");
+    }
     return test.result();
 }
