@@ -31,6 +31,13 @@ FetchContent_Declare(
   SOURCE_DIR ${CMAKE_BINARY_DIR}/melatonin_inspector)
 FetchContent_MakeAvailable(melatonin_inspector)
 
+if (APPLE)
+  set(HYBRID_PLUGIN_FORMATS VST3 AU Standalone)
+else()
+  # AU is Apple-only. Other platforms still build VST3, Standalone, and CTest.
+  set(HYBRID_PLUGIN_FORMATS VST3 Standalone)
+endif()
+
 juce_add_plugin(HybridWavetable
   COMPANY_NAME "EON Audio"
   BUNDLE_ID com.eonaudio.hybridwavetable
@@ -43,7 +50,7 @@ juce_add_plugin(HybridWavetable
   PLUGIN_MANUFACTURER_CODE Eona
   PLUGIN_CODE Hwbl
   AU_SANDBOX_SAFE FALSE
-  FORMATS VST3 AU Standalone
+  FORMATS ${HYBRID_PLUGIN_FORMATS}
   PRODUCT_NAME "SEOUL DSP")
 
 juce_generate_juce_header(HybridWavetable)
