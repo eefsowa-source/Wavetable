@@ -6,3 +6,4 @@ dist/
 *.pkg
 *.tmp
 Build-Release/
+.superpowers/

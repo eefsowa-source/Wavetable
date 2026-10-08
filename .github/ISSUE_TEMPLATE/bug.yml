@@ -1,0 +1,21 @@
+name: 버그
+description: 기대와 다른 동작을 보고합니다.
+title: "[bug] "
+labels: ["bug"]
+body:
+  - type: textarea
+    attributes:
+      label: 무슨 일이 있었나요
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: 재현 순서
+    validations:
+      required: true
+  - type: input
+    attributes:
+      label: 호스트와 플러그인 형식
+      description: 예시 DAW, macOS 버전, VST3 또는 AU
+    validations:
+      required: false
