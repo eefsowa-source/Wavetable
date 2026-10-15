@@ -127,14 +127,15 @@ public:
     void applyUiType (int type);
 
 private:
-    void layoutTypeSelector();
+    // Rebuilds the item menu for one bank (0 skins, 1 layouts, 2 curated).
+    void populateUiTypeItems (int bank);
 
     HybridWavetableAudioProcessor& processor;
    CyberpunkLookAndFeel lookAndFeel;
 
    juce::TextButton loadButton { "Load Audio" }, presetButton { "Save Preset" }, loadPresetButton { "Load Preset" };
    juce::TextButton midiLearnButton { "Learn CC" };
-   juce::ComboBox midiLearnParameter, factoryPresetMenu, uiTypeMenu;
+   juce::ComboBox midiLearnParameter, factoryPresetMenu, uiBankMenu, uiTypeMenu;
    juce::Slider osc1, osc2, osc3, cutoff, resonance, drive, saturation, filterEnvAmount, output;
    juce::Slider osc1Detune, osc2Detune, osc3Detune, unisonKeyTrack;
    std::array<juce::Slider, 8> envelopeSliders;
@@ -151,6 +152,7 @@ std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> a1, a2, a3
     const seoului::Skin* activeSkin = &seoului::skins()[(size_t) 0];
     seoului::Layout activeLayout = seoului::layouts()[(size_t) 0];
     int uiType = 0;
+    int uiTypeBank = -1; // bank currently loaded into uiTypeMenu
 
 #if defined(MELATONIN_INSPECTOR_ENABLED)
     melatonin::Inspector inspector { *this, false };

@@ -3,7 +3,7 @@
 > **For agentic workers:** 각 태스크는 RED -> GREEN 순서로 진행하고, 태스크 단위로 커밋한다.
 
 **작성일:** 2026-09-29
-**상태:** IN PROGRESS (SQ-1..SQ-4, UX-2 구현 + 자동 게이트 완료, 2026-09-29)
+**상태:** IN PROGRESS (SQ-1..SQ-4, UX-1, UX-2 구현 + 자동 게이트 완료, 2026-10-15)
 **전제:** Plan B 계보(음질 기반 + eon_dsp 통합) 완료 상태에서 시작. `main`은 origin 대비 ahead 25, 미커밋 변경으로 Debug용 melatonin_inspector 통합이 추가됨(SOURCE_DIR 수정 포함).
 
 ## 1. 목표
@@ -89,8 +89,11 @@
 
 **근거:** 90개 평면 콤보는 탐색 비용이 크다. 데이터는 이미 뱅크 구조.
 
-* [ ] 뱅크 탭 또는 2단 콤보(A/B/C → 항목)로 재구성. 단일 파라미터 `uiType` 유지.
-* [ ] 게이트: UiSnapshot 90종 md5 회귀 없음 + 선택 텍스트 동기화 단위테스트 갱신.
+* [x] 2단 콤보(뱅크 A/B/C → 30개 항목)로 재구성. 단일 파라미터 `uiType` 유지.
+      부수 수정: 에디터 선택이 `processor.uiType`에 도달하지 않아 세션 저장이
+      안 되던 버그를 `applyUiType`에서 `setUiType` 호출로 수정.
+* [x] 게이트: UiSnapshot 90종 90개 고유 md5 유지 + ProcessorSmoke에 뱅크/항목
+      동기화·프로세서 저장 단언 추가. docs/quality/d5-ux1-bank-item-selector.md
 
 ### UX-2 — 출력 피드백 (레벨 미터 + 피크 인디케이터)
 

@@ -549,25 +549,22 @@ HybridWavetableAudioProcessorEditor::HybridWavetableAudioProcessorEditor (Hybrid
     factoryPresetMenu.onChange = [this] { processor.applyFactoryPreset (factoryPresetMenu.getSelectedItemIndex()); };
     addAndMakeVisible (factoryPresetMenu);
 
-    // The single 90-entry UI type selector covers all three banks.
+    // Two-step selector: bank (A skins / B layouts / C curated), then one of
+    // its 30 types. uiType stays a single persisted 0..89 value.
     uiTypeLabel.setText ("UI TYPE", juce::dontSendNotification);
     uiTypeLabel.setFont (juce::Font (juce::FontOptions{}.withHeight (10.0f).withStyle ("Bold")));
     addAndMakeVisible (uiTypeLabel);
-    for (int bank = 0; bank < 3; ++bank)
+    uiBankMenu.setName ("uiTypeBank");
+    uiBankMenu.addItemList ({ "A // Skins", "B // Layouts", "C // Curated" }, 1);
+    uiBankMenu.setTooltip ("UI type bank: 30 skins, 30 layouts, or 30 curated pairings");
+    uiBankMenu.onChange = [this] { applyUiType (uiBankMenu.getSelectedItemIndex() * 30 + uiType % 30); };
+    addAndMakeVisible (uiBankMenu);
+    uiTypeMenu.setName ("uiTypeItem");
+    uiTypeMenu.setTooltip ("Select one of the 30 types in the chosen bank (saved with the session)");
+    uiTypeMenu.onChange = [this]
     {
-        uiTypeMenu.addSeparator();
-        for (int i = 0; i < 30; ++i)
-        {
-            const int type = bank * 30 + i;
-            const juce::String prefix = bank == 0 ? "A" : (bank == 1 ? "B" : "C");
-            const juce::String name = bank == 0 ? juce::String (seoului::skins()[(size_t) i].name)
-                                    : bank == 1 ? juce::String (seoului::layouts()[(size_t) i].name)
-                                                : juce::String (seoului::combined()[(size_t) i].name);
-            uiTypeMenu.addItem (prefix + " // " + name, type + 1);
-        }
-    }
-    uiTypeMenu.setTooltip ("Select one of the 90 editor UI types (saved with the session)");
-    uiTypeMenu.onChange = [this] { applyUiType (uiTypeMenu.getSelectedItemIndex()); };
+        applyUiType (juce::jmax (0, uiBankMenu.getSelectedItemIndex()) * 30 + uiTypeMenu.getSelectedItemIndex());
+    };
     addAndMakeVisible (uiTypeMenu);
 
     const char* envelopeNames[] = { "Amp Attack", "Amp Decay", "Amp Sustain", "Amp Release", "Filter Attack", "Filter Decay", "Filter Sustain", "Filter Release" };
@@ -647,12 +644,31 @@ HybridWavetableAudioProcessorEditor::HybridWavetableAudioProcessorEditor (Hybrid
 
 HybridWavetableAudioProcessorEditor::~HybridWavetableAudioProcessorEditor() { setLookAndFeel (nullptr); }
 
+void HybridWavetableAudioProcessorEditor::populateUiTypeItems (int bank)
+{
+    uiTypeMenu.clear (juce::dontSendNotification);
+    for (int i = 0; i < 30; ++i)
+    {
+        const juce::String name = bank == 0 ? juce::String (seoului::skins()[(size_t) i].name)
+                                : bank == 1 ? juce::String (seoului::layouts()[(size_t) i].name)
+                                            : juce::String (seoului::combined()[(size_t) i].name);
+        uiTypeMenu.addItem (name, i + 1);
+    }
+    uiTypeBank = bank;
+}
+
 void HybridWavetableAudioProcessorEditor::applyUiType (int type)
 {
     uiType = seoului::clampType (type);
+    const int bank = uiType / 30;
+    uiBankMenu.setSelectedItemIndex (bank, juce::dontSendNotification);
+    if (uiTypeBank != bank)
+        populateUiTypeItems (bank);
     // Keep the selector text in sync even when the change arrives from state
     // restoration or offline snapshot tooling rather than the combo itself.
-    uiTypeMenu.setSelectedItemIndex (uiType, juce::dontSendNotification);
+    uiTypeMenu.setSelectedItemIndex (uiType - bank * 30, juce::dontSendNotification);
+    // Persist through the processor so the selection survives session save.
+    processor.setUiType (uiType);
     activeSkin = &seoului::skins()[(size_t) seoului::skinIndexForType (uiType)];
     activeLayout = seoului::layouts()[(size_t) seoului::layoutIndexForType (uiType)];
     lookAndFeel.setSkin (*activeSkin);
@@ -805,7 +821,9 @@ void HybridWavetableAudioProcessorEditor::resized()
     int x = topX;
     factoryPresetMenu.setBounds (x, 28, factoryWidth, rowHeight);
     x += factoryWidth + gap;
-    uiTypeMenu.setBounds (x, 28, typeWidth, rowHeight);
+    const int bankWidth = juce::jmin (92, typeWidth / 2);
+    uiBankMenu.setBounds (x, 28, bankWidth, rowHeight);
+    uiTypeMenu.setBounds (x + bankWidth + 2, 28, typeWidth - bankWidth - 2, rowHeight);
     x += typeWidth + gap;
     midiLearnParameter.setBounds (x, 28, midiWidth, rowHeight);
     x += midiWidth + gap;

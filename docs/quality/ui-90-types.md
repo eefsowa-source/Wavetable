@@ -35,7 +35,9 @@ Mint Rail(2+24), Prism Grid(29+25).
 
 ## 동작
 
-- `uiTypeMenu` 콤보박스 90항목(뱅크별 separator, "A // 스킨명" 형식).
+- 2단 선택기(2026-10-15 UX-1): `uiBankMenu`(A // Skins / B // Layouts /
+  C // Curated) + `uiTypeMenu`(선택 뱅크의 30항목). 구형은 90항목 단일
+  콤보였다. `docs/quality/d5-ux1-bank-item-selector.md` 참고.
 - `HybridWavetableAudioProcessor::uiType` 상태 저장/복원, 범위 밖 값 clamp.
   이전 세션 상태에 키가 없으면 0으로 기본 복원.
 - `applyUiType()`이 스킨 -> LookAndFeel -> 웨이브 에디터 -> 라벨 색 -> resized ->

@@ -1,4 +1,5 @@
 #include "../Source/PluginProcessor.h"
+#include "../Source/PluginEditor.h"
 #include "../Source/EditorTypes.h"
 #include <cmath>
 #include <iostream>
@@ -542,6 +543,40 @@ int main()
         HybridWavetableAudioProcessor::copyXmlToBinary (*uiTypeXml, legacyUiState);
         processor.setStateInformation (legacyUiState.getData(), (int) legacyUiState.getSize());
         ok &= check (processor.getUiType() == 0, "states without a UI type default to type 0");
+    }
+
+    // UX-1: the two-step bank/item selector stays in sync with the persisted
+    // uiType, and editor selection reaches the processor so it saves.
+    {
+        HybridWavetableAudioProcessor uiProcessor (0x53454f55u);
+        std::unique_ptr<juce::AudioProcessorEditor> uiEditor (uiProcessor.createEditor());
+        auto* typedEditor = dynamic_cast<HybridWavetableAudioProcessorEditor*> (uiEditor.get());
+        ok &= check (typedEditor != nullptr, "editor is created for UI type sync checks");
+        if (typedEditor != nullptr)
+        {
+            const juce::ComboBox* bankCombo = nullptr;
+            const juce::ComboBox* itemCombo = nullptr;
+            for (int i = 0; i < typedEditor->getNumChildComponents(); ++i)
+                if (auto* combo = dynamic_cast<juce::ComboBox*> (typedEditor->getChildComponent (i)))
+                {
+                    if (combo->getName() == "uiTypeBank") bankCombo = combo;
+                    if (combo->getName() == "uiTypeItem") itemCombo = combo;
+                }
+            ok &= check (bankCombo != nullptr && itemCombo != nullptr, "bank and item selectors exist");
+            if (bankCombo != nullptr && itemCombo != nullptr)
+            {
+                typedEditor->applyUiType (47);
+                ok &= check (bankCombo->getSelectedItemIndex() == 1, "layout bank is selected for type 47");
+                ok &= check (itemCombo->getSelectedItemIndex() == 17
+                             && itemCombo->getText() == juce::String (seoului::layouts()[(size_t) 17].name),
+                             "item selector shows the matching layout name");
+                ok &= check (uiProcessor.getUiType() == 47, "editor selection reaches the persisted uiType");
+                typedEditor->applyUiType (5);
+                ok &= check (bankCombo->getSelectedItemIndex() == 0
+                             && itemCombo->getText() == juce::String (seoului::skins()[(size_t) 5].name),
+                             "skin bank re-syncs for type 5");
+            }
+        }
     }
 
     processor.releaseResources();
