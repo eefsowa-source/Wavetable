@@ -3,7 +3,7 @@
 > **For agentic workers:** 각 태스크는 RED -> GREEN 순서로 진행하고, 태스크 단위로 커밋한다.
 
 **작성일:** 2026-09-29
-**상태:** IN PROGRESS (SQ-1..SQ-4, UX-1..UX-7 구현 + 자동 게이트 완료, 2026-10-15; SQ-5/SQ-6만 오픈)
+**상태:** IN PROGRESS (UX 전체 + SQ-5 일부 완료, 2026-10-15; SQ-5 잔여·SQ-6 오픈)
 **전제:** Plan B 계보(음질 기반 + eon_dsp 통합) 완료 상태에서 시작. `main`은 origin 대비 ahead 25, 미커밋 변경으로 Debug용 melatonin_inspector 통합이 추가됨(SOURCE_DIR 수정 포함).
 
 ## 1. 목표
@@ -74,8 +74,13 @@
 
 ### SQ-5 — 미완료 호스트 게이트 완결
 
-* [ ] AU pluginval stall 원인 분석(120 s에서 멈춤 — 어느 단계인지 로그 확보) → 재시도 또는 한계 문서화.
-* [ ] REAPER VST3 로드/렌더, clean Ableton 삽입(빈 세트), DAW 오토메이션·세션 저장/복원, DAW 드롭아웃 관측.
+* [x] AU pluginval stall 원인 분석 → pluginval 자체 AU 하네스의 채널 레이아웃
+      열거 단계 30 s 타임아웃으로 국소화. auval은 PASS. 하네스 한계로 문서화
+      (d8-sq5-host-gates.md).
+* [x] REAPER VST3 로드 시도 → TrackFX_AddByName 15종 이름/경로 모두 -1,
+      대조군 Serum.vst3i는 즉시 로드. 바이너리 매핑조차 안 되는 명시적 한계로
+      기록. AU-in-REAPER 로드·59 파라미터는 PASS. (d8)
+* [ ] clean Ableton 삽입(빈 세트), DAW 오토메이션·세션 저장/복원, DAW 드롭아웃 관측.
 * [ ] 확장 시나리오 Golden 승격: 현재 바이너리 정상 증거(위 게이트) 확인 후 승격.
 
 ### SQ-6 — 블라인드 청취 매트릭스 확장
