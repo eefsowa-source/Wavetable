@@ -169,6 +169,7 @@ private:
    juce::TextButton loadButton { "Load Audio" }, presetButton { "Save Preset" }, loadPresetButton { "Load Preset" };
    juce::TextButton valuesButton { "Values" }, undoButton { "Undo" }, redoButton { "Redo" };
    juce::TextButton presetPrevButton { "<" }, presetNextButton { ">" }, abButton { "A" };
+   juce::ComboBox scaleMenu;
    juce::TextButton midiLearnButton { "Learn CC" };
    juce::ComboBox midiLearnParameter, factoryPresetMenu, uiBankMenu, uiTypeMenu;
    FineSlider osc1, osc2, osc3, cutoff, resonance, drive, saturation, filterEnvAmount, output;

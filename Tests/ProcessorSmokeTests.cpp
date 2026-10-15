@@ -1,6 +1,7 @@
 #include "../Source/PluginProcessor.h"
 #include "../Source/PluginEditor.h"
 #include "../Source/EditorTypes.h"
+#include <algorithm>
 #include <cmath>
 #include <iostream>
 #include <limits>
@@ -586,6 +587,53 @@ int main()
                 ok &= check (std::abs (cutoffParam->convertFrom0to1 (cutoffParam->getValue()) - before) < 1.0f,
                              "A/B toggle restores the leaving state");
             }
+            // UX-5: resize boundary - every visible child stays inside.
+            for (int sizeIndex = 0; sizeIndex < 2; ++sizeIndex)
+            {
+                uiEditor->setSize (sizeIndex == 0 ? 1120 : 1800, sizeIndex == 0 ? 760 : 1140);
+                for (int i = 0; i < uiEditor->getNumChildComponents(); ++i)
+                {
+                    auto* child = uiEditor->getChildComponent (i);
+                    if (child->isVisible() && ! uiEditor->getLocalBounds().contains (child->getBounds()))
+                    {
+                        std::cerr << "OVERFLOW child " << i << " name=" << child->getName()
+                                  << " bounds " << child->getBounds().toString() << " in "
+                                  << uiEditor->getBounds().toString() << std::endl;
+                        ok = false;
+                    }
+                }
+            }
+            // UX-6: the editor participates in keyboard focus (Inspector
+            // Cmd+I coexists since neither the editor nor children grab keys).
+            ok &= check (typedEditor->getWantsKeyboardFocus(), "editor accepts keyboard focus");
+        }
+    }
+
+    // UX-6: palette audit - every skin's text keeps WCAG AA contrast against
+    // panels and the darker gradient stop; dim labels keep AA large text (3:1).
+    {
+        auto channelLum = [] (std::uint8_t v)
+        {
+            const double c = (double) v / 255.0;
+            return c <= 0.04045 ? c / 12.92 : std::pow ((c + 0.055) / 1.055, 2.4);
+        };
+        auto luminance = [&channelLum] (std::uint32_t argb)
+        {
+            return 0.2126 * channelLum ((std::uint8_t) (argb >> 16))
+                 + 0.7152 * channelLum ((std::uint8_t) (argb >> 8))
+                 + 0.0722 * channelLum ((std::uint8_t) argb);
+        };
+        auto contrast = [&luminance] (std::uint32_t a, std::uint32_t b)
+        {
+            const double lo = std::min (luminance (a), luminance (b));
+            const double hi = std::max (luminance (a), luminance (b));
+            return (hi + 0.05) / (lo + 0.05);
+        };
+        for (const auto& skin : seoului::skins())
+        {
+            ok &= check (contrast (skin.text, skin.panel) >= 4.5, "skin text vs panel meets WCAG AA");
+            ok &= check (contrast (skin.text, skin.backgroundBottom) >= 4.5, "skin text vs background meets WCAG AA");
+            ok &= check (contrast (skin.textDim, skin.backgroundTop) >= 3.0, "dim label vs background meets AA large text");
         }
     }
 

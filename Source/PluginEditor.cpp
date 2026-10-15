@@ -523,7 +523,10 @@ HybridWavetableAudioProcessorEditor::HybridWavetableAudioProcessorEditor (Hybrid
     {
     setSize (1120, 760);
     setResizable (true, true);
-    setResizeLimits (1040, 760, 1800, 1100);
+    // 1120 keeps the densest knob/envelope rows inside bounds; 1140 admits
+    // the 150% preset exactly.
+    setResizeLimits (1120, 760, 1800, 1140);
+    setWantsKeyboardFocus (true);
     setLookAndFeel (&lookAndFeel);
 
     title.setText ("SEOUL DSP", juce::dontSendNotification);
@@ -659,6 +662,16 @@ HybridWavetableAudioProcessorEditor::HybridWavetableAudioProcessorEditor (Hybrid
     redoButton.setTooltip ("Redo the last undone wavetable edit");
     redoButton.onClick = [this] { wavetableEditor.redo(); };
     addAndMakeVisible (redoButton);
+    scaleMenu.addItemList ({ "100%", "125%", "150%" }, 1);
+    scaleMenu.setSelectedItemIndex (0, juce::dontSendNotification);
+    scaleMenu.setTooltip ("Editor size preset (free resize is also enabled)");
+    scaleMenu.onChange = [this]
+    {
+        const float scale = scaleMenu.getSelectedItemIndex() == 1 ? 1.25f
+                          : scaleMenu.getSelectedItemIndex() == 2 ? 1.5f : 1.0f;
+        setSize ((int) (1120.0f * scale), (int) (760.0f * scale));
+    };
+    addAndMakeVisible (scaleMenu);
 
     addAndMakeVisible (loadButton);
     loadButton.setTooltip ("Import WAV, AIFF, M4A, CAF, MP3, FLAC or OGG");
@@ -910,16 +923,19 @@ void HybridWavetableAudioProcessorEditor::resized()
     undoButton.setBounds (82, 70, 50, 18);
     redoButton.setBounds (136, 70, 50, 18);
     abButton.setBounds (192, 70, 34, 18);
+    scaleMenu.setBounds (232, 70, 84, 18);
+    // File/preset actions live on the utility strip: at the minimum width the
+    // top row ended past the right edge and these three were unreachable.
+    loadButton.setBounds (322, 70, 86, 20);
+    presetButton.setBounds (412, 70, 92, 20);
+    loadPresetButton.setBounds (508, 70, 92, 20);
 
     // Top tool row: preset / midi learn / audio / UI type selector.
     int topX = compact ? 420 : 430;
     const int factoryWidth = compact ? 160 : 180;
     const int midiWidth = 120;
     const int learnWidth = compact ? 70 : 80;
-    const int loadWidth = compact ? 78 : 92;
-    const int saveWidth = compact ? 78 : 92;
     const int typeWidth = juce::jmax (150, (compact ? 210 : 250) - density * 8);
-    const int externalWidth = juce::jmax (80, w - (topX + factoryWidth + typeWidth + midiWidth + learnWidth + loadWidth + saveWidth + gap * 6 + 8));
     int x = topX;
     presetPrevButton.setBounds (x, 28, 26, rowHeight);
     factoryPresetMenu.setBounds (x + 28, 28, factoryWidth - 52, rowHeight);
@@ -932,12 +948,6 @@ void HybridWavetableAudioProcessorEditor::resized()
     midiLearnParameter.setBounds (x, 28, midiWidth, rowHeight);
     x += midiWidth + gap;
     midiLearnButton.setBounds (x, 28, learnWidth, rowHeight);
-    x += learnWidth + gap;
-    loadButton.setBounds (x, 28, loadWidth, rowHeight);
-    x += loadWidth + gap;
-    presetButton.setBounds (x, 28, saveWidth, rowHeight);
-    x += saveWidth + gap;
-    loadPresetButton.setBounds (x, 28, externalWidth, rowHeight);
     factoryPresetLabel.setBounds (topX, 7, factoryWidth, 16);
     uiTypeLabel.setBounds (topX + factoryWidth + gap, 7, typeWidth, 16);
 
