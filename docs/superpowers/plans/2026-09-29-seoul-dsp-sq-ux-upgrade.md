@@ -3,7 +3,7 @@
 > **For agentic workers:** 각 태스크는 RED -> GREEN 순서로 진행하고, 태스크 단위로 커밋한다.
 
 **작성일:** 2026-09-29
-**상태:** IN PROGRESS (SQ-1..SQ-4, UX-1, UX-2 구현 + 자동 게이트 완료, 2026-10-15)
+**상태:** IN PROGRESS (SQ-1..SQ-4, UX-1..UX-4 구현 + 자동 게이트 완료, 2026-10-15)
 **전제:** Plan B 계보(음질 기반 + eon_dsp 통합) 완료 상태에서 시작. `main`은 origin 대비 ahead 25, 미커밋 변경으로 Debug용 melatonin_inspector 통합이 추가됨(SOURCE_DIR 수정 포함).
 
 ## 1. 목표
@@ -102,14 +102,15 @@
 
 ### UX-3 — 편집 마찰 제거
 
-* [ ] 노브 더블클릭 기본값 리셋, Shift/Alt 미세조정 배율, 드래그 중이 아닐 때도 값 표시 토글.
-* [ ] 웨이브테이블 그리기 undo/redo (편집 버퍼 스냅샷 스택, 최소 16단계).
-* [ ] 게이트: 단위테스트(undo 스택) + 스냅샷 회귀.
+* [x] 노브 더블클릭 기본값 리셋(APVTS 기본값), Shift/Alt 4x 미세드래그, VALUES 토글로 값 상시 표시.
+* [x] 웨이브테이블 그리기 undo/redo (스트로크당 스냅샷, 32단계, UNDO/REDO 버튼).
+* [x] 게이트: ProcessorSmoke undo/redo 복원 단언 + UiSnapshot 90종 고유 md5.
 
 ### UX-4 — 프리셋 UX
 
-* [ ] 팩토리 11종 + 사용자 프리셋 prev/next 버튼, 현재 프리셋명 표시.
-* [ ] A/B compare (파라미터 스냅샷 토글). 프리셋 스키마 변경 없이 상태 메모리에만 존재.
+* [x] 팩토리 11종 prev/next 버튼(랩어라운드), 현재 프리셋명은 콤보 텍스트로 표시.
+      사용자 프리셋 디렉터리가 코드베이스에 없어 순회는 팩토리 뱅크만.
+* [x] A/B compare (ValueTree copyState 스냅샷 토글, 버튼 텍스트 A/B, 상태 메모리에만 존재).
 
 ### UX-5 — 사이징/밀도
 

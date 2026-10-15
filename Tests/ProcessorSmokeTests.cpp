@@ -576,7 +576,31 @@ int main()
                              && itemCombo->getText() == juce::String (seoului::skins()[(size_t) 5].name),
                              "skin bank re-syncs for type 5");
             }
+            // UX-4: A/B toggle restores the state it left, session-free.
+            if (auto* cutoffParam = uiProcessor.parameters.getParameter ("cutoff"))
+            {
+                const float before = cutoffParam->convertFrom0to1 (cutoffParam->getValue());
+                typedEditor->toggleAB(); // A -> B; B starts as a copy of A
+                cutoffParam->setValueNotifyingHost (cutoffParam->convertTo0to1 (500.0f));
+                typedEditor->toggleAB(); // back to A
+                ok &= check (std::abs (cutoffParam->convertFrom0to1 (cutoffParam->getValue()) - before) < 1.0f,
+                             "A/B toggle restores the leaving state");
+            }
         }
+    }
+
+    // UX-3: wavetable drawing undo/redo restores frame 0 exactly.
+    {
+        WavetableEditorComponent waveEditor (processor);
+        const auto original = processor.wavetable.frames[0];
+        waveEditor.pushUndoSnapshot();
+        for (int i = 0; i < 64; ++i)
+            processor.wavetable.frames[0][(size_t) (i * 32)] = 0.25f;
+        waveEditor.undo();
+        ok &= check (processor.wavetable.frames[0] == original, "undo restores the pre-edit frame");
+        waveEditor.redo();
+        ok &= check (processor.wavetable.frames[0][32] == 0.25f, "redo reapplies the edit");
+        waveEditor.undo();
     }
 
     processor.releaseResources();

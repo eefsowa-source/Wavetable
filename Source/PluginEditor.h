@@ -2,6 +2,7 @@
 #include <JuceHeader.h>
 #include "PluginProcessor.h"
 #include "EditorTypes.h"
+#include <deque>
 
 #if defined(MELATONIN_INSPECTOR_ENABLED)
 #include <melatonin_inspector/melatonin_inspector.h>
@@ -17,10 +18,34 @@ public:
     // Presentation state is pushed by the owning editor; audio behaviour and
     // the control set never change with the selected type.
     void setSkin (const seoului::Skin& skinToUse) { skin = &skinToUse; repaint(); }
+
+    // Edit-history snapshots of frame 0 (the only frame this editor draws).
+    void pushUndoSnapshot();
+    void undo();
+    void redo();
+    bool canUndo() const noexcept { return ! undoStack.empty(); }
+    bool canRedo() const noexcept { return ! redoStack.empty(); }
 private:
+    void restoreFrame (const std::array<float, WavetableData::tableSize>& frame);
+
     HybridWavetableAudioProcessor& processor;
     const seoului::Skin* skin = &seoului::skins()[(size_t) 0];
+    std::deque<std::array<float, WavetableData::tableSize>> undoStack, redoStack;
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (WavetableEditorComponent)
+};
+
+// Rotary slider that drops to quarter sensitivity while Shift or Alt is held.
+// JUCE re-reads the drag sensitivity on every mouse event, so toggling the
+// modifier mid-drag scales deltas without a value jump.
+class FineSlider final : public juce::Slider
+{
+public:
+    using juce::Slider::Slider;
+    void mouseDrag (const juce::MouseEvent& e) override
+    {
+        setMouseDragSensitivity (250 * ((e.mods.isShiftDown() || e.mods.isAltDown()) ? 4 : 1));
+        juce::Slider::mouseDrag (e);
+    }
 };
 
 // Compact output level meter with a clip indicator (Plan C UX-2). The audio
@@ -110,8 +135,11 @@ public:
     void drawComboBox (juce::Graphics&, int, int, bool, int, int, int, int, juce::ComboBox&) override;
     void positionComboBoxText (juce::ComboBox&, juce::Label&) override;
 
+    void setAlwaysShowValues (bool shouldShow) { alwaysShowValues = shouldShow; }
+
 private:
     seoului::Skin currentSkin = seoului::skins()[(size_t) 0];
+    bool alwaysShowValues = false;
     juce::Colour c (std::uint32_t argb) const { return juce::Colour (argb); }
 };
 
@@ -126,19 +154,26 @@ public:
     // editor itself, host-side state changes and offline snapshot tooling.
     void applyUiType (int type);
 
+    // A/B compare: swaps between two in-memory parameter snapshots. Session
+    // state and the preset schema are untouched.
+    void toggleAB();
+
 private:
     // Rebuilds the item menu for one bank (0 skins, 1 layouts, 2 curated).
     void populateUiTypeItems (int bank);
+    void applyFactoryPresetStep (int step);
 
     HybridWavetableAudioProcessor& processor;
    CyberpunkLookAndFeel lookAndFeel;
 
    juce::TextButton loadButton { "Load Audio" }, presetButton { "Save Preset" }, loadPresetButton { "Load Preset" };
+   juce::TextButton valuesButton { "Values" }, undoButton { "Undo" }, redoButton { "Redo" };
+   juce::TextButton presetPrevButton { "<" }, presetNextButton { ">" }, abButton { "A" };
    juce::TextButton midiLearnButton { "Learn CC" };
    juce::ComboBox midiLearnParameter, factoryPresetMenu, uiBankMenu, uiTypeMenu;
-   juce::Slider osc1, osc2, osc3, cutoff, resonance, drive, saturation, filterEnvAmount, output;
-   juce::Slider osc1Detune, osc2Detune, osc3Detune, unisonKeyTrack;
-   std::array<juce::Slider, 8> envelopeSliders;
+   FineSlider osc1, osc2, osc3, cutoff, resonance, drive, saturation, filterEnvAmount, output;
+   FineSlider osc1Detune, osc2Detune, osc3Detune, unisonKeyTrack;
+   std::array<FineSlider, 8> envelopeSliders;
 juce::ComboBox filterType, slope;
 juce::Label title, signatureLabel, wavetableSection, oscillatorSection, filterSection, envelopeSection, factoryPresetLabel, uiTypeLabel;
 juce::Label midiLearnLabel, filterTypeLabel, slopeLabel;
@@ -153,6 +188,8 @@ std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> a1, a2, a3
     seoului::Layout activeLayout = seoului::layouts()[(size_t) 0];
     int uiType = 0;
     int uiTypeBank = -1; // bank currently loaded into uiTypeMenu
+    juce::ValueTree presetA, presetB;
+    bool showingB = false;
 
 #if defined(MELATONIN_INSPECTOR_ENABLED)
     melatonin::Inspector inspector { *this, false };

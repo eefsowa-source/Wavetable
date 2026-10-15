@@ -255,7 +255,6 @@ void CyberpunkLookAndFeel::drawRotarySlider (juce::Graphics& g, int x, int y, in
         g.saveState();
         g.addTransform (juce::AffineTransform::rotation (angle, centre.x, centre.y).translated (centre.x, centre.y));
         const auto from = skinColour (currentSkin.accent);
-        const auto to = skinColour (currentSkin.accentAlt);
         // Needle glow
         g.setColour (from.withAlpha (0.4f));
         g.fillRoundedRectangle (-2.5f, -capRadius + 1.0f, 5.0f, capRadius * 0.55f + 2.0f, 2.0f);
@@ -278,8 +277,9 @@ void CyberpunkLookAndFeel::drawRotarySlider (juce::Graphics& g, int x, int y, in
         g.fillEllipse (centre.x - 2.5f, centre.y - 2.5f, 5.0f, 5.0f);
     }
 
-    // Values stay out of the way until the performer is actively changing a control.
-    if (slider.isMouseButtonDown() || currentSkin.knobStyle == 5)
+    // Values stay out of the way until the performer is actively changing a
+    // control, unless the VALUES toggle pins them on permanently.
+    if (slider.isMouseButtonDown() || alwaysShowValues || currentSkin.knobStyle == 5)
     {
         if (slider.isMouseButtonDown())
         {
@@ -294,7 +294,7 @@ void CyberpunkLookAndFeel::drawRotarySlider (juce::Graphics& g, int x, int y, in
     }
 }
 
-void CyberpunkLookAndFeel::drawButtonBackground (juce::Graphics& g, juce::Button& button, const juce::Colour& backgroundColour, bool highlighted, bool down)
+void CyberpunkLookAndFeel::drawButtonBackground (juce::Graphics& g, juce::Button& button, const juce::Colour&, bool highlighted, bool down)
 {
     auto r = button.getLocalBounds().toFloat().reduced (1.0f);
     auto fill = down ? c (currentSkin.accent).withAlpha (0.25f) : juce::Colours::white.withAlpha (0.08f);
@@ -324,7 +324,7 @@ void CyberpunkLookAndFeel::drawButtonText (juce::Graphics& g, juce::TextButton& 
     g.drawFittedText (button.getButtonText().toUpperCase(), button.getLocalBounds().reduced (6, 0), juce::Justification::centred, 1);
 }
 
-void CyberpunkLookAndFeel::drawComboBox (juce::Graphics& g, int width, int height, bool isButtonDown, int, int, int, int, juce::ComboBox& box)
+void CyberpunkLookAndFeel::drawComboBox (juce::Graphics& g, int width, int height, bool, int, int, int, int, juce::ComboBox& box)
 {
     auto r = juce::Rectangle<float> (1.0f, 1.0f, (float) width - 2.0f, (float) height - 2.0f);
     // Dark inset background with shadow
@@ -454,7 +454,46 @@ void WavetableEditorComponent::paint (juce::Graphics& g)
     }
 }
 
-void WavetableEditorComponent::mouseDown (const juce::MouseEvent& e) { mouseDrag (e); }
+void WavetableEditorComponent::pushUndoSnapshot()
+{
+    undoStack.push_back (processor.wavetable.frames[0]);
+    if (undoStack.size() > 32)
+        undoStack.pop_front();
+    redoStack.clear();
+}
+
+void WavetableEditorComponent::restoreFrame (const std::array<float, WavetableData::tableSize>& frame)
+{
+    processor.wavetable.frames[0] = frame;
+    processor.wavetable.regenerateMipsForFrame (0);
+    processor.publishWavetable();
+    repaint();
+}
+
+void WavetableEditorComponent::undo()
+{
+    if (undoStack.empty())
+        return;
+    redoStack.push_back (processor.wavetable.frames[0]);
+    restoreFrame (undoStack.back());
+    undoStack.pop_back();
+}
+
+void WavetableEditorComponent::redo()
+{
+    if (redoStack.empty())
+        return;
+    undoStack.push_back (processor.wavetable.frames[0]);
+    restoreFrame (redoStack.back());
+    redoStack.pop_back();
+}
+
+void WavetableEditorComponent::mouseDown (const juce::MouseEvent& e)
+{
+    // Snapshot once per gesture so a whole stroke undoes as one step.
+    pushUndoSnapshot();
+    mouseDrag (e);
+}
 void WavetableEditorComponent::mouseDrag (const juce::MouseEvent& e)
 {
     auto wave = getLocalBounds().toFloat().reduced (18.0f, 34.0f);
@@ -523,6 +562,16 @@ HybridWavetableAudioProcessorEditor::HybridWavetableAudioProcessorEditor (Hybrid
         s->setTooltip (s->getName());
         addAndMakeVisible (s);
     }
+    // Double-click returns each knob to its parameter default.
+    const std::pair<const char*, juce::Slider*> knobParameters[] = {
+        { "osc1Pos", &osc1 }, { "osc2Pos", &osc2 }, { "osc3Pos", &osc3 },
+        { "osc1Detune", &osc1Detune }, { "osc2Detune", &osc2Detune }, { "osc3Detune", &osc3Detune },
+        { "unisonKeyTrack", &unisonKeyTrack }, { "cutoff", &cutoff }, { "resonance", &resonance },
+        { "filterDrive", &drive }, { "saturation", &saturation },
+        { "filterEnvAmount", &filterEnvAmount }, { "output", &output } };
+    for (const auto& entry : knobParameters)
+        if (auto* p = processor.parameters.getParameter (entry.first))
+            entry.second->setDoubleClickReturnValue (true, p->convertFrom0to1 (p->getDefaultValue()));
     addAndMakeVisible (filterType);
     filterType.addItemList ({ "Low-pass", "High-pass", "Band-pass" }, 1);
     filterType.setTooltip ("Filter type");
@@ -548,6 +597,15 @@ HybridWavetableAudioProcessorEditor::HybridWavetableAudioProcessorEditor (Hybrid
     factoryPresetMenu.setTooltip ("Apply one of the 11 built-in presets");
     factoryPresetMenu.onChange = [this] { processor.applyFactoryPreset (factoryPresetMenu.getSelectedItemIndex()); };
     addAndMakeVisible (factoryPresetMenu);
+    presetPrevButton.setTooltip ("Previous factory preset");
+    presetPrevButton.onClick = [this] { applyFactoryPresetStep (-1); };
+    presetNextButton.setTooltip ("Next factory preset");
+    presetNextButton.onClick = [this] { applyFactoryPresetStep (1); };
+    addAndMakeVisible (presetPrevButton);
+    addAndMakeVisible (presetNextButton);
+    abButton.setTooltip ("A/B compare: toggles between two parameter snapshots (not saved)");
+    abButton.onClick = [this] { toggleAB(); };
+    addAndMakeVisible (abButton);
 
     // Two-step selector: bank (A skins / B layouts / C curated), then one of
     // its 30 types. uiType stays a single persisted 0..89 value.
@@ -580,9 +638,27 @@ HybridWavetableAudioProcessorEditor::HybridWavetableAudioProcessorEditor (Hybrid
         if (! sustain) s.setSkewFactorFromMidPoint (0.25);
         s.setNumDecimalPlacesToDisplay (2);
         s.setTooltip (envelopeNames[i]);
+        if (auto* p = processor.parameters.getParameter (envelopeIDs[i]))
+            s.setDoubleClickReturnValue (true, p->convertFrom0to1 (p->getDefaultValue()));
         addAndMakeVisible (s);
         envelopeAttachments[i] = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (processor.parameters, envelopeIDs[i], s);
     }
+
+    valuesButton.setTooltip ("Pin knob values on screen instead of only while dragging");
+    valuesButton.setClickingTogglesState (true);
+    valuesButton.onClick = [this]
+    {
+        lookAndFeel.setAlwaysShowValues (valuesButton.getToggleState());
+        sendLookAndFeelChange();
+        repaint();
+    };
+    addAndMakeVisible (valuesButton);
+    undoButton.setTooltip ("Undo the last wavetable edit stroke");
+    undoButton.onClick = [this] { wavetableEditor.undo(); };
+    addAndMakeVisible (undoButton);
+    redoButton.setTooltip ("Redo the last undone wavetable edit");
+    redoButton.onClick = [this] { wavetableEditor.redo(); };
+    addAndMakeVisible (redoButton);
 
     addAndMakeVisible (loadButton);
     loadButton.setTooltip ("Import WAV, AIFF, M4A, CAF, MP3, FLAC or OGG");
@@ -655,6 +731,27 @@ void HybridWavetableAudioProcessorEditor::populateUiTypeItems (int bank)
         uiTypeMenu.addItem (name, i + 1);
     }
     uiTypeBank = bank;
+}
+
+void HybridWavetableAudioProcessorEditor::applyFactoryPresetStep (int step)
+{
+    const int count = processor.getFactoryPresetNames().size();
+    const int current = factoryPresetMenu.getSelectedItemIndex();
+    // Wrap through the bank; nothing selected starts at the first preset.
+    const int next = current < 0 ? 0 : (current + step + count) % count;
+    factoryPresetMenu.setSelectedItemIndex (next, juce::sendNotification);
+}
+
+void HybridWavetableAudioProcessorEditor::toggleAB()
+{
+    auto& leaving = showingB ? presetB : presetA;
+    auto& arriving = showingB ? presetA : presetB;
+    leaving = processor.parameters.copyState();
+    if (! arriving.isValid())
+        arriving = leaving.createCopy(); // first toggle: B starts as a copy of A
+    processor.parameters.replaceState (arriving.createCopy());
+    showingB = ! showingB;
+    abButton.setButtonText (showingB ? "B" : "A");
 }
 
 void HybridWavetableAudioProcessorEditor::applyUiType (int type)
@@ -775,7 +872,7 @@ void HybridWavetableAudioProcessorEditor::paint (juce::Graphics& g)
     }
 
     auto area = getLocalBounds().toFloat().reduced (10.0f);
-    auto panelBox = [&g, &s, panelColour, lineColour] (juce::Rectangle<float> r, juce::Colour accentColour)
+    auto panelBox = [&g, panelColour, lineColour] (juce::Rectangle<float> r, juce::Colour accentColour)
     {
         g.setColour (panelColour.withAlpha (0.84f));
         g.fillRoundedRectangle (r, 7.0f);
@@ -808,6 +905,11 @@ void HybridWavetableAudioProcessorEditor::resized()
     const int rowHeight = juce::jmax (26, 30 - density * 2);
     // Fixed corner placement, independent of the skeleton/density layout.
     outputMeter.setBounds (292, 30, 132, rowHeight);
+    // Edit-utility strip in the free band under the signature label.
+    valuesButton.setBounds (20, 70, 56, 18);
+    undoButton.setBounds (82, 70, 50, 18);
+    redoButton.setBounds (136, 70, 50, 18);
+    abButton.setBounds (192, 70, 34, 18);
 
     // Top tool row: preset / midi learn / audio / UI type selector.
     int topX = compact ? 420 : 430;
@@ -819,7 +921,9 @@ void HybridWavetableAudioProcessorEditor::resized()
     const int typeWidth = juce::jmax (150, (compact ? 210 : 250) - density * 8);
     const int externalWidth = juce::jmax (80, w - (topX + factoryWidth + typeWidth + midiWidth + learnWidth + loadWidth + saveWidth + gap * 6 + 8));
     int x = topX;
-    factoryPresetMenu.setBounds (x, 28, factoryWidth, rowHeight);
+    presetPrevButton.setBounds (x, 28, 26, rowHeight);
+    factoryPresetMenu.setBounds (x + 28, 28, factoryWidth - 52, rowHeight);
+    presetNextButton.setBounds (x + factoryWidth - 24, 28, 24, rowHeight);
     x += factoryWidth + gap;
     const int bankWidth = juce::jmin (92, typeWidth / 2);
     uiBankMenu.setBounds (x, 28, bankWidth, rowHeight);
@@ -857,7 +961,7 @@ void HybridWavetableAudioProcessorEditor::resized()
         filterSection.setBounds (rightX + 10 + (controlsWidth - 20) / 2, contentTop, controlsWidth / 2 - 20, 20);
         const int knobY = contentTop + 24;
         const int knobWidth = juce::jmax (56, (controlsWidth - 60) / 13);
-        auto placeKnobRow = [knobY, knobWidth, rightX] (juce::Slider& s, int index) { s.setBounds (rightX + 20 + index * knobWidth, knobY, knobWidth - 5, 132); };
+        auto placeKnobRow = [knobWidth, rightX] (juce::Slider& s, int index) { s.setBounds (rightX + 20 + index * knobWidth, knobY, knobWidth - 5, 132); };
         placeKnobRow (osc1, 0); placeKnobRow (osc2, 1); placeKnobRow (osc3, 2);
         placeKnobRow (osc1Detune, 3); placeKnobRow (osc2Detune, 4); placeKnobRow (osc3Detune, 5);
         placeKnobRow (unisonKeyTrack, 6); placeKnobRow (cutoff, 7); placeKnobRow (resonance, 8);
