@@ -40,6 +40,7 @@ endif()
 
 juce_add_plugin(HybridWavetable
   COMPANY_NAME "EON Audio"
+  COMPANY_COPYRIGHT "Copyright (c) 2026 EON Audio"
   BUNDLE_ID com.eonaudio.hybridwavetable
   IS_SYNTH TRUE
   NEEDS_MIDI_INPUT TRUE
@@ -72,6 +73,10 @@ target_link_libraries(HybridWavetable PRIVATE
   juce::juce_audio_processors
   juce::juce_dsp
   juce::juce_gui_extra)
+target_link_libraries(HybridWavetable PUBLIC
+  juce::juce_recommended_config_flags
+  juce::juce_recommended_lto_flags
+  juce::juce_recommended_warning_flags)
 target_link_libraries(HybridWavetable PUBLIC
   "$<$<CONFIG:Debug>:melatonin_inspector>")
 target_compile_definitions(HybridWavetable PUBLIC
